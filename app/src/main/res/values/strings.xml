@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CrossPoint Pal</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_send">Send</string>
+    <string name="nav_notifications">Notifications</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Home -->
+    <string name="home_subtitle">Your e-ink companion</string>
+    <string name="home_device_connected">Connected</string>
+    <string name="home_device_disconnected">Not connected</string>
+    <string name="home_battery_label">Battery %1$d%%</string>
+    <string name="home_last_seen">Last seen: %1$s</string>
+    <string name="home_indicator_paired">Paired</string>
+    <string name="home_indicator_notifications_on">Notifications on</string>
+    <string name="home_indicator_ready">Ready</string>
+    <string name="home_action_send_to_pal">Send to Pal</string>
+    <string name="home_action_sync_notifications">Sync notifications</string>
+    <string name="home_last_event_label">Last button event</string>
+    <string name="home_no_device_title">No device connected</string>
+    <string name="home_no_device_body">Pair your CrossPoint Pal device to start sending content to its e-ink display.</string>
+    <string name="home_action_connect">Connect device</string>
+    <string name="home_connect_demo_message">Demo build — device connection is not implemented yet.</string>
+
+    <!-- Send -->
+    <string name="send_title">Send to Pal</string>
+    <string name="send_field_title_label">Title</string>
+    <string name="send_field_body_label">Body</string>
+    <string name="send_char_count">%1$d / %2$d</string>
+    <string name="send_preview_title">E-ink preview</string>
+    <string name="send_preview_empty">The preview shows your text as it would appear on the e-ink display.</string>
+    <string name="send_preview_untitled">Untitled</string>
+    <string name="send_action_clear">Clear</string>
+    <string name="send_action_send">Send</string>
+    <string name="send_sent_message">Sent to Pal</string>
+    <string name="send_no_device_message">No device connected</string>
+
+    <!-- Notifications -->
+    <string name="notifications_title">Notifications</string>
+    <string name="notifications_master_label">Mirror selected notifications</string>
+    <string name="notifications_sources_header">App sources</string>
+    <string name="notifications_sources_caption">Sample sources for the demo build. Real apps arrive together with notification access.</string>
+    <string name="notifications_last_sync">Last sync: %1$s</string>
+    <plurals name="notifications_sent_count">
+        <item quantity="one">%1$d notification sent</item>
+        <item quantity="other">%1$d notifications sent</item>
+    </plurals>
+    <string name="notifications_action_sync_now">Sync now</string>
+    <string name="notifications_synced_message">Notifications synced</string>
+    <string name="source_messages">Messages</string>
+    <string name="source_calendar">Calendar</string>
+    <string name="source_tasks">Tasks</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_theme_section">Appearance</string>
+    <string name="settings_theme_label">Theme</string>
+    <string name="settings_theme_value_system">System</string>
+    <string name="settings_theme_value_light">Light</string>
+    <string name="settings_theme_value_dark">Dark</string>
+    <string name="settings_theme_dialog_title">Theme</string>
+    <string name="settings_connection_section">Connection</string>
+    <string name="settings_connection_label">Connection</string>
+    <string name="settings_connection_connected">Connected to %1$s</string>
+    <string name="settings_connection_none">Not connected</string>
+    <string name="settings_pairing_section">Pairing</string>
+    <string name="settings_pairing_label">Bonded device</string>
+    <string name="settings_pairing_bonded">Bonded device: %1$s</string>
+    <string name="settings_pairing_none">No bonded device</string>
+    <string name="settings_privacy_section">Privacy</string>
+    <string name="settings_privacy_label">Manage what gets synced</string>
+    <string name="settings_privacy_hint">Configured on the Notifications screen</string>
+    <string name="settings_about_section">About</string>
+    <string name="settings_about_label">App version</string>
+    <string name="settings_version">%1$s</string>
+    <string name="settings_danger_section">Device</string>
+    <string name="settings_forget_device">Forget device</string>
+    <string name="settings_forget_dialog_title">Forget %1$s?</string>
+    <string name="settings_forget_dialog_text">The device will be removed from this app. You can pair it again later.</string>
+    <string name="settings_forget_confirm">Forget</string>
+    <string name="settings_cancel">Cancel</string>
+</resources>
