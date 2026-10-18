@@ -466,6 +466,34 @@ human approval.
 Never alter signing keys, keystores, package ownership, store credentials, or
 production distribution settings as an incidental part of feature work.
 
+## Build and verification
+
+The Android application lives in `app/` and uses Gradle with version catalogs
+(`gradle/libs.versions.toml`). All dependency versions are pinned.
+
+Canonical verification commands, mirrored by CI (`.github/workflows/ci.yml`):
+
+```sh
+./gradlew test            # unit tests, including Robolectric-hosted UI tests
+./gradlew lint            # Android lint
+./gradlew assembleDebug   # debug build
+```
+
+Environment requirements:
+
+- JDK 21 (a standard glibc JDK such as Temurin; Robolectric's native runtime
+  does not run on musl-based hosts, and JetBrains Runtime's built-in module
+  opens mask JVM flag requirements that stock JDKs must satisfy — the unit
+  test tasks declare the required `--add-opens`/`--add-exports` flags).
+- Android SDK with platform 37.0 and build tools 36.0.0.
+- The Android SDK location comes from `ANDROID_HOME`/`ANDROID_SDK_ROOT` or a
+  gitignored `local.properties`; never commit one.
+
+Phase 0 uses demo state for everything device-facing. There is deliberately
+no Bluetooth, notification listener, background worker, or persistence beyond
+the theme preference (DataStore). Do not add these for planned features; the
+BLE phase establishes them when the protocol contract exists.
+
 ## Handoff
 
 Before declaring a logical change ready, provide a compact handoff containing:
