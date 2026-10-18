@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.crosspoint.pal"
+    namespace = "fans.crosspoint.pal"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.crosspoint.pal"
+        applicationId = "fans.crosspoint.pal"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
