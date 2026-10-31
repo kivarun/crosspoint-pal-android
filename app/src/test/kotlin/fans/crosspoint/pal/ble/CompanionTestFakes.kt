@@ -99,6 +99,7 @@ class FakeGattLink : GattLink {
     private val writeReplies = Channel<Unit>(Channel.UNLIMITED)
 
     private var deferredCloseCallback: (() -> Unit)? = null
+    private var deferredNotification: Pair<((ByteArray) -> Unit)?, ByteArray>? = null
 
     override suspend fun requestMtu(mtu: Int): Int {
         requestedMtuValues.add(mtu)
@@ -144,6 +145,21 @@ class FakeGattLink : GattLink {
     fun fireDeferredCloseCallback() {
         deferredCloseCallback?.invoke()
         deferredCloseCallback = null
+    }
+
+    /**
+     * Simulates the binder thread having dispatched a notification callback
+     * before the manager could clear it; the captured callback runs later via
+     * [fireDeferredNotification].
+     */
+    fun enterNotificationOnBinderThread(json: String) {
+        deferredNotification = onNotification to json.toByteArray(Charsets.UTF_8)
+    }
+
+    fun fireDeferredNotification() {
+        val (callback, bytes) = deferredNotification ?: return
+        deferredNotification = null
+        callback?.invoke(bytes)
     }
 
     private fun closeOperationChannels() {

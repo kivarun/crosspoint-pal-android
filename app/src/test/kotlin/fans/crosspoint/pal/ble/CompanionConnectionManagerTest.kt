@@ -283,6 +283,70 @@ class CompanionConnectionManagerTest {
     }
 
     @Test
+    fun `a button event during a pending send does not consume the response waiter`() = runTest {
+        val (fakes, manager) = build()
+        val link = readySession(fakes.transport, manager)
+
+        var result: SendResult? = null
+        backgroundScope.launch { result = manager.sendContent("Morning", "Quiet") }
+        testScheduler.runCurrent()
+        link.replyWritten()
+        testScheduler.runCurrent()
+
+        // The reader sends an unsolicited button event before the ack.
+        link.deliverNotification("""{"op":"button","button":"confirm","pressed":true}""")
+        testScheduler.runCurrent()
+
+        // The event still reaches the diagnostics...
+        assertEquals("Confirm button", manager.lastButtonEvent.value?.buttonLabel)
+        // ...and the session keeps waiting for the real content_ack.
+        val sent = String(link.written.last(), Charsets.UTF_8)
+        val id = Regex("\"contentId\":\"([^\"]+)\"").find(sent)!!.groupValues[1]
+        link.deliverNotification("""{"op":"content_ack","contentId":"$id"}""")
+        testScheduler.runCurrent()
+
+        assertEquals(SendResult.Sent, result)
+        assertEquals(LinkPhase.Ready, manager.linkPhase.value)
+        assertFalse(link.isClosed)
+    }
+
+    @Test
+    fun `a late notification from a superseded link cannot disturb the new session`() = runTest {
+        val (fakes, manager) = build()
+        val first = readySession(fakes.transport, manager)
+        // The binder thread has dispatched a notification callback before the
+        // manager could clear it.
+        first.enterNotificationOnBinderThread("""{"op":"button","button":"back","pressed":true}""")
+
+        manager.disconnect()
+        testScheduler.runCurrent()
+        manager.reconnect()
+        val second = fakes.transport.createdLinks[1]
+        completeSetup(second)
+        assertEquals(LinkPhase.Ready, manager.linkPhase.value)
+
+        // The stale notification arrives while the new session is mid-send.
+        var result: SendResult? = null
+        backgroundScope.launch { result = manager.sendContent("Morning", "Quiet") }
+        testScheduler.runCurrent()
+        second.replyWritten()
+        testScheduler.runCurrent()
+        first.fireDeferredNotification()
+        testScheduler.runCurrent()
+
+        // The real ack completes the send; the stale event was dropped.
+        val sent = String(second.written.last(), Charsets.UTF_8)
+        val id = Regex("\"contentId\":\"([^\"]+)\"").find(sent)!!.groupValues[1]
+        second.deliverNotification("""{"op":"content_ack","contentId":"$id"}""")
+        testScheduler.runCurrent()
+
+        assertEquals(SendResult.Sent, result)
+        assertEquals(LinkPhase.Ready, manager.linkPhase.value)
+        assertFalse(second.isClosed)
+        assertNull(manager.lastButtonEvent.value)
+    }
+
+    @Test
     fun `a content send is acknowledged by the exact contentId`() = runTest {
         val (fakes, manager) = build()
         val link = readySession(fakes.transport, manager)

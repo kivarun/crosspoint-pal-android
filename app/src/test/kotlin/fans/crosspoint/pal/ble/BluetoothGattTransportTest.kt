@@ -229,6 +229,25 @@ class BluetoothGattTransportTest {
         }
     }
 
+    @Test
+    fun `cancelling the connect wait closes the just created gatt client`() {
+        val transport = BluetoothGattTransport(ApplicationProvider.getApplicationContext())
+        runBlocking {
+            val connectJob = launch(Dispatchers.Unconfined) {
+                transport.connect(address) // suspends awaiting the stack callback
+            }
+            yield() // let the attempt reach connectGatt and its wait
+            connectJob.cancel()
+            connectJob.join()
+            assertTrue(connectJob.isCancelled)
+        }
+        // The manager never received the link, so the handle must be released
+        // by the transport itself, not by a later manager cleanup.
+        val gatts = shadowOf(device()).getBluetoothGatts()
+        assertEquals(1, gatts.size)
+        assertTrue(shadowOf(gatts[0]).isClosed())
+    }
+
     private companion object {
         val CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }

@@ -167,20 +167,28 @@ private class GattLinkImpl(
             // A callback closed the link before the handle was assigned.
             closeGatt()
         }
-        when (val event = deferred.await()) {
-            is GattEvent.Connected -> Unit
-            is GattEvent.Status -> {
-                close()
-                throw GattOperationException(event.status)
+        try {
+            when (val event = deferred.await()) {
+                is GattEvent.Connected -> Unit
+                is GattEvent.Status -> {
+                    close()
+                    throw GattOperationException(event.status)
+                }
+                is GattEvent.Disconnected -> {
+                    close()
+                    throw LinkLostException()
+                }
+                is GattEvent.Mtu -> {
+                    close()
+                    throw IllegalStateException("Unexpected GATT event while connecting")
+                }
             }
-            is GattEvent.Disconnected -> {
-                close()
-                throw LinkLostException()
-            }
-            is GattEvent.Mtu -> {
-                close()
-                throw IllegalStateException("Unexpected GATT event while connecting")
-            }
+        } catch (cancelled: CancellationException) {
+            // The caller gave up before the stack finished connecting; the
+            // manager does not own this link yet, so the just-created handle
+            // must be released here or it leaks.
+            close()
+            throw cancelled
         }
     }
 

@@ -343,9 +343,9 @@ class CompanionConnectionManager(
         linkPhaseInternal.value = LinkPhase.Connecting
         val sessionLink = within(LinkPhase.Connecting, STEP_TIMEOUT_MS) { transport.connect(address) }
         link.set(sessionLink)
-        sessionLink.onNotification = { bytes -> onNotification(bytes) }
-        // The link identity travels with the callback: a late close callback
-        // from a superseded link must never disturb the live session.
+        // The link identity travels with both callbacks: a late callback from
+        // a superseded link must never disturb the live session.
+        sessionLink.onNotification = { bytes -> onNotification(sessionLink, bytes) }
         sessionLink.onClosed = { onLinkClosed(sessionLink) }
 
         linkPhaseInternal.value = LinkPhase.NegotiatingMtu
@@ -391,12 +391,21 @@ class CompanionConnectionManager(
         linkPhaseInternal.value = LinkPhase.Ready
     }
 
-    private fun onNotification(bytes: ByteArray) {
+    private fun onNotification(source: GattLink, bytes: ByteArray) {
+        // A late notification dispatched from a superseded link is dead
+        // traffic; it must not reach the live session's waiter or diagnostics.
+        if (link.get() !== source) return
         val message = try {
             CompanionCodec.decodeNotification(bytes)
         } catch (malformed: MalformedNotification) {
             // Runs on a binder thread: never throw out of a GATT callback.
             terminateSession(CompanionError.ProtocolViolation("malformed notification"))
+            return
+        }
+        if (message is DeviceMessage.Button) {
+            // Button events are unsolicited reader input; they are never the
+            // reply a waiter awaits, even while a send is in flight.
+            onUnawaitedMessage(message)
             return
         }
         val waiter = responseWaiter
