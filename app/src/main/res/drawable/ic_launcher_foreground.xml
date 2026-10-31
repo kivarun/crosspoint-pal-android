@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- CrossPoint Pal: solid P + folded page. Circular-mask safe (glyph radius 32.60dp, viewport 108dp). -->
+<!-- CrossPoint Pal monogram from branding/crosspoint-pal-mark.svg; centered in 108dp adaptive icon foreground. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:translateX="19.1600" android:translateY="21.1700"
-        android:scaleX="0.6700" android:scaleY="0.6700">
-        <path android:fillColor="#FFFFFFFF" android:pathData="M 27,11 H 65 L 87,33 V 74 C 87,82 80,87 72,87 H 37 V 79 H 71 C 75,79 77,77 77,73 V 37 H 71 C 62,37 58,32 58,24 V 21 H 27 C 24,21 25,23 25,27 V 87 H 24 C 20,87 17,84 17,78 V 28 C 17,18 20,11 27,11 Z" />
-        <path android:fillColor="#FFFFFFFF" android:pathData="M 33,87 V 42 H 53 C 66,42 72,48 72,56 C 72,62 65,63 54,63 H 44 V 87 Z" />
+    <group android:translateX="21.0450" android:translateY="18.1850"
+        android:scaleX="0.1300" android:scaleY="0.1300">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M60,118     A50,50 0 0 1 110,68     H339     L447,183     V433     A50,50 0 0 1 397,483     H186     V214     H261     A66,66 0 0 1 261,346     H249     V420     H372     A12,12 0 0 0 384,408     V203     H337     A53,53 0 0 1 284,150     V120     H135     A12,12 0 0 0 123,132     V483     H110     A50,50 0 0 1 60,433     Z" />
     </group>
 </vector>
