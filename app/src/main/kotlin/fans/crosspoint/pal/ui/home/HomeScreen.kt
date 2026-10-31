@@ -1,5 +1,8 @@
 package fans.crosspoint.pal.ui.home
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,37 +13,61 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fans.crosspoint.pal.R
+import fans.crosspoint.pal.ble.CompanionError
+import fans.crosspoint.pal.ble.LinkPhase
+import fans.crosspoint.pal.ble.ScannedDevice
 import fans.crosspoint.pal.domain.ButtonEventSnapshot
 import fans.crosspoint.pal.domain.CompanionDeviceSnapshot
 import fans.crosspoint.pal.ui.components.PalCard
 import fans.crosspoint.pal.ui.components.ScreenHeader
 import fans.crosspoint.pal.ui.components.SectionHeader
 import fans.crosspoint.pal.ui.components.StatusDot
+import fans.crosspoint.pal.ui.components.rememberCompanionErrorMessages
 import fans.crosspoint.pal.ui.theme.CrossPointPalTheme
 import fans.crosspoint.pal.ui.theme.palStatusColors
 import fans.crosspoint.pal.ui.theme.Spacing
 
 /**
- * Home / device screen: companion status, primary actions, and the most
- * recent device button event.
+ * Home / device screen: companion status, primary actions, the bounded
+ * scan-and-connect flow, and the most recent device button event.
  */
 @Composable
 fun HomeScreen(
     state: HomeUiState,
+    requiredPermissions: List<String>,
     onSendToPal: () -> Unit,
-    onSyncNotifications: () -> Unit,
-    onConnectDevice: () -> Unit,
+    onConnectPressed: () -> Unit,
+    onDeviceSelected: (ScannedDevice) -> Unit,
+    onCancelScan: () -> Unit,
+    onReconnectPressed: () -> Unit,
+    onDisconnectPressed: () -> Unit,
+    onPermissionsResult: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        onPermissionsResult(grants.values.all { it })
+    }
+    LaunchedEffect(state.needsPermissions) {
+        if (state.needsPermissions && requiredPermissions.isNotEmpty()) {
+            permissionLauncher.launch(requiredPermissions.toTypedArray())
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -55,10 +82,20 @@ fun HomeScreen(
 
         DeviceCard(
             state = state,
-            onConnectDevice = onConnectDevice,
+            onConnectPressed = onConnectPressed,
+            onReconnectPressed = onReconnectPressed,
+            onDisconnectPressed = onDisconnectPressed,
         )
 
-        if (state.hasDevice) {
+        if (state.isScanning) {
+            ScanCard(
+                devices = state.scannedDevices,
+                onSelect = onDeviceSelected,
+                onCancel = onCancelScan,
+            )
+        }
+
+        if (state.hasDevice && state.phase == LinkPhase.Ready) {
             Button(
                 onClick = onSendToPal,
                 modifier = Modifier.fillMaxWidth(),
@@ -68,12 +105,6 @@ fun HomeScreen(
                 ),
             ) {
                 Text(stringResource(R.string.home_action_send_to_pal))
-            }
-            OutlinedButton(
-                onClick = onSyncNotifications,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.home_action_sync_notifications))
             }
         }
 
@@ -86,9 +117,14 @@ fun HomeScreen(
 @Composable
 private fun DeviceCard(
     state: HomeUiState,
-    onConnectDevice: () -> Unit,
+    onConnectPressed: () -> Unit,
+    onReconnectPressed: () -> Unit,
+    onDisconnectPressed: () -> Unit,
 ) {
     val device = state.device
+    val phase = state.phase
+    val failure = (phase as? LinkPhase.Failed)?.error
+    val errorMessage = rememberCompanionErrorMessages()
     PalCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(Spacing.l)) {
             if (device == null) {
@@ -104,7 +140,7 @@ private fun DeviceCard(
                     modifier = Modifier.padding(top = Spacing.s),
                 )
                 Button(
-                    onClick = onConnectDevice,
+                    onClick = onConnectPressed,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = Spacing.l),
@@ -124,29 +160,134 @@ private fun DeviceCard(
                     )
                     ConnectionBadge(connected = device.connected)
                 }
+                Text(
+                    text = stringResource(R.string.home_last_seen, device.lastSeenLabel),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = Spacing.m),
+                )
+                if (device.connected) {
+                    StatusIndicators(device = device)
+                    OutlinedButton(
+                        onClick = onDisconnectPressed,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = Spacing.l),
+                    ) {
+                        Text(stringResource(R.string.home_action_disconnect))
+                    }
+                } else if (!state.isConnecting) {
+                    // A remembered device must always offer its way back into
+                    // a session: after a process restart the phase is Idle,
+                    // and without this button the only route to a working
+                    // state was Forget Device plus a fresh scan and pairing.
+                    Button(
+                        onClick = onReconnectPressed,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = Spacing.l),
+                    ) {
+                        Text(stringResource(R.string.home_action_reconnect))
+                    }
+                }
+            }
+
+            if (state.isConnecting) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = Spacing.m),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.xl),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.m),
                 ) {
-                    Text(
-                        text = stringResource(R.string.home_battery_label, device.batteryPercent),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    LinearProgressIndicator(
+                        modifier = Modifier.weight(1f),
                     )
                     Text(
-                        text = stringResource(R.string.home_last_seen, device.lastSeenLabel),
+                        text = phaseLabel(phase),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (device.connected) {
-                    StatusIndicators(device = device)
-                }
+            }
+
+            failure?.let { error ->
+                Text(
+                    text = errorMessage(error),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.palStatusColors.destructive,
+                    modifier = Modifier.padding(top = Spacing.m),
+                )
             }
         }
     }
+}
+
+@Composable
+private fun ScanCard(
+    devices: List<ScannedDevice>,
+    onSelect: (ScannedDevice) -> Unit,
+    onCancel: () -> Unit,
+) {
+    PalCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(Spacing.l)) {
+            Text(
+                text = stringResource(R.string.home_scanning_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (devices.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.home_scanning_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = Spacing.s),
+                )
+            } else {
+                Column(modifier = Modifier.padding(top = Spacing.s)) {
+                    devices.forEach { device ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(device) }
+                                .padding(vertical = Spacing.s),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = device.name
+                                    ?: stringResource(R.string.home_scan_unnamed_device),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = device.address,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            TextButton(
+                onClick = onCancel,
+                modifier = Modifier.padding(top = Spacing.s),
+            ) {
+                Text(stringResource(R.string.home_action_cancel))
+            }
+        }
+    }
+}
+
+@Composable
+private fun phaseLabel(phase: LinkPhase): String = when (phase) {
+    LinkPhase.Bonding -> stringResource(R.string.home_phase_bonding)
+    LinkPhase.Connecting -> stringResource(R.string.home_phase_connecting)
+    LinkPhase.NegotiatingMtu -> stringResource(R.string.home_phase_negotiating)
+    LinkPhase.Discovering -> stringResource(R.string.home_phase_discovering)
+    LinkPhase.Subscribing -> stringResource(R.string.home_phase_subscribing)
+    LinkPhase.Handshaking -> stringResource(R.string.home_phase_handshaking)
+    else -> stringResource(R.string.home_phase_connecting)
 }
 
 @Composable
@@ -223,6 +364,22 @@ private fun LastEventCard(event: ButtonEventSnapshot) {
     }
 }
 
+/** Collects one-shot Home events and reports them to the host scaffold. */
+@Composable
+fun HomeEventsEffect(
+    events: kotlinx.coroutines.flow.Flow<HomeUiEvent>,
+    onError: (String) -> Unit,
+) {
+    val message = rememberCompanionErrorMessages()
+    LaunchedEffect(events) {
+        events.collect { event ->
+            when (event) {
+                is HomeUiEvent.Error -> onError(message(event.error))
+            }
+        }
+    }
+}
+
 @PreviewLightDark
 @Composable
 private fun HomeScreenPreviewConnected() {
@@ -230,19 +387,28 @@ private fun HomeScreenPreviewConnected() {
         HomeScreen(
             state = HomeUiState(
                 device = CompanionDeviceSnapshot(
-                    name = "X4 Classic",
+                    name = "CrossPoint Pal",
                     connected = true,
                     paired = true,
-                    notificationsMirroring = true,
+                    notificationsMirroring = false,
                     ready = true,
-                    batteryPercent = 73,
-                    lastSeenLabel = "now",
+                    batteryPercent = null,
+                    lastSeenLabel = "just now",
                 ),
-                lastEvent = ButtonEventSnapshot(buttonLabel = "Right button", timeLabel = "Just now"),
+                lastEvent = ButtonEventSnapshot(buttonLabel = "Right button", timeLabel = "14:03:59"),
+                phase = LinkPhase.Ready,
+                isScanning = false,
+                scannedDevices = emptyList(),
+                needsPermissions = false,
             ),
+            requiredPermissions = emptyList(),
             onSendToPal = {},
-            onSyncNotifications = {},
-            onConnectDevice = {},
+            onConnectPressed = {},
+            onDeviceSelected = {},
+            onCancelScan = {},
+            onReconnectPressed = {},
+            onDisconnectPressed = {},
+            onPermissionsResult = {},
         )
     }
 }
@@ -252,10 +418,47 @@ private fun HomeScreenPreviewConnected() {
 private fun HomeScreenPreviewNoDevice() {
     CrossPointPalTheme {
         HomeScreen(
-            state = HomeUiState(device = null, lastEvent = null),
+            state = HomeUiState(
+                device = null,
+                lastEvent = null,
+                phase = LinkPhase.Idle,
+                isScanning = false,
+                scannedDevices = emptyList(),
+                needsPermissions = false,
+            ),
+            requiredPermissions = emptyList(),
             onSendToPal = {},
-            onSyncNotifications = {},
-            onConnectDevice = {},
+            onConnectPressed = {},
+            onDeviceSelected = {},
+            onCancelScan = {},
+            onReconnectPressed = {},
+            onDisconnectPressed = {},
+            onPermissionsResult = {},
+        )
+    }
+}
+
+@PreviewLightDark
+@Composable
+private fun HomeScreenPreviewScanning() {
+    CrossPointPalTheme {
+        HomeScreen(
+            state = HomeUiState(
+                device = null,
+                lastEvent = null,
+                phase = LinkPhase.Idle,
+                isScanning = true,
+                scannedDevices = listOf(ScannedDevice("AA:BB:CC:DD:EE:FF", "CrossPoint Pal")),
+                needsPermissions = false,
+            ),
+            requiredPermissions = emptyList(),
+            onSendToPal = {},
+            onConnectPressed = {},
+            onDeviceSelected = {},
+            onCancelScan = {},
+            onReconnectPressed = {},
+            onDisconnectPressed = {},
+            onPermissionsResult = {},
         )
     }
 }

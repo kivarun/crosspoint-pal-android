@@ -18,12 +18,37 @@
     <string name="home_indicator_notifications_on">Notifications on</string>
     <string name="home_indicator_ready">Ready</string>
     <string name="home_action_send_to_pal">Send to Pal</string>
-    <string name="home_action_sync_notifications">Sync notifications</string>
     <string name="home_last_event_label">Last button event</string>
     <string name="home_no_device_title">No device connected</string>
     <string name="home_no_device_body">Pair your CrossPoint Pal device to start sending content to its e-ink display.</string>
     <string name="home_action_connect">Connect device</string>
-    <string name="home_connect_demo_message">Demo build — device connection is not implemented yet.</string>
+    <string name="home_action_reconnect">Reconnect</string>
+    <string name="home_action_disconnect">Disconnect</string>
+    <string name="home_action_cancel">Cancel</string>
+    <string name="home_scanning_title">Scanning…</string>
+    <string name="home_scanning_hint">Make sure the reader is in Settings → Network → Phone Companion, then tap your device below.</string>
+    <string name="home_scan_unnamed_device">Unnamed device</string>
+    <string name="home_phase_bonding">Pairing…</string>
+    <string name="home_phase_connecting">Connecting…</string>
+    <string name="home_phase_negotiating">Negotiating MTU…</string>
+    <string name="home_phase_discovering">Discovering services…</string>
+    <string name="home_phase_subscribing">Subscribing…</string>
+    <string name="home_phase_handshaking">Starting session…</string>
+
+    <!-- Companion errors -->
+    <string name="error_bluetooth_off">Bluetooth is off. Turn it on and try again.</string>
+    <string name="error_permissions_missing">Bluetooth permission is needed to find and talk to your Pal.</string>
+    <string name="error_scan_failed">Could not scan for devices.</string>
+    <string name="error_pairing_failed">Pairing did not complete. Put the reader in the companion screen and try again.</string>
+    <string name="error_connection_failed">Connection failed (status %1$s).</string>
+    <string name="error_insufficient_mtu">The negotiated MTU (%1$s) is too small for the companion protocol.</string>
+    <string name="error_incompatible_gatt">The device\'s GATT layout does not match the companion protocol.</string>
+    <string name="error_incompatible_version">The device runs an incompatible companion protocol version.</string>
+    <string name="error_setup_timeout">Setting up the connection timed out.</string>
+    <string name="error_send_rejected">The device rejected the content (%1$s).</string>
+    <string name="error_send_timeout">Sending timed out. The device did not acknowledge the content.</string>
+    <string name="error_protocol_violation">The device sent an unexpected message. Disconnect and reconnect.</string>
+    <string name="error_link_lost">The connection was lost.</string>
 
     <!-- Send -->
     <string name="send_title">Send to Pal</string>
@@ -35,8 +60,9 @@
     <string name="send_preview_untitled">Untitled</string>
     <string name="send_action_clear">Clear</string>
     <string name="send_action_send">Send</string>
+    <string name="send_state_sending">Sending…</string>
     <string name="send_sent_message">Sent to Pal</string>
-    <string name="send_no_device_message">No device connected</string>
+    <string name="send_no_device_message">No connected session</string>
 
     <!-- Notifications -->
     <string name="notifications_title">Notifications</string>
@@ -79,7 +105,10 @@
     <string name="settings_danger_section">Device</string>
     <string name="settings_forget_device">Forget device</string>
     <string name="settings_forget_dialog_title">Forget %1$s?</string>
-    <string name="settings_forget_dialog_text">The device will be removed from this app. You can pair it again later.</string>
+    <string name="settings_forget_dialog_text">This removes the device from the app and deletes the Bluetooth bond on the phone. Reset pairing on the reader too: in its companion screen, hold Down or Confirm for 1.5 seconds.</string>
     <string name="settings_forget_confirm">Forget</string>
+    <string name="settings_forget_completed">Device forgotten</string>
+    <string name="settings_forget_bond_failed">The Bluetooth bond could not be removed automatically. Forget the device in Android Bluetooth settings.</string>
+    <string name="settings_action_disconnect">Disconnect</string>
     <string name="settings_cancel">Cancel</string>
 </resources>

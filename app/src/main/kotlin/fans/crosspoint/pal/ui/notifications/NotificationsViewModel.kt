@@ -2,7 +2,7 @@ package fans.crosspoint.pal.ui.notifications
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import fans.crosspoint.pal.data.DemoCompanionState
+import fans.crosspoint.pal.data.DemoNotificationState
 import fans.crosspoint.pal.domain.NotificationMirroringSettings
 import fans.crosspoint.pal.domain.NotificationSource
 import kotlinx.coroutines.flow.SharingStarted
@@ -15,26 +15,26 @@ data class NotificationsUiState(
     val settings: NotificationMirroringSettings,
 )
 
-class NotificationsViewModel(private val demoCompanionState: DemoCompanionState) : ViewModel() {
+class NotificationsViewModel(private val demoNotificationState: DemoNotificationState) : ViewModel() {
 
-    val uiState: StateFlow<NotificationsUiState> = demoCompanionState.notificationSettings
+    val uiState: StateFlow<NotificationsUiState> = demoNotificationState.notificationSettings
         .map { NotificationsUiState(settings = it) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = NotificationsUiState(demoCompanionState.notificationSettings.value),
+            initialValue = NotificationsUiState(demoNotificationState.notificationSettings.value),
         )
 
     fun onMasterToggle(enabled: Boolean) {
-        demoCompanionState.setMasterMirroring(enabled)
+        demoNotificationState.setMasterMirroring(enabled)
     }
 
     fun onSourceToggle(source: NotificationSource) {
-        demoCompanionState.toggleSource(source)
+        demoNotificationState.toggleSource(source)
     }
 
     /** Demo sync request from the Sync now action. */
     fun syncNow() {
-        demoCompanionState.syncNotifications()
+        demoNotificationState.syncNotifications()
     }
 }

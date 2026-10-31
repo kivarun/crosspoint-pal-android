@@ -4,7 +4,8 @@ package fans.crosspoint.pal.domain
  * Presentation-ready snapshot of the companion device state.
  *
  * Relative time labels ("Just now") are produced by the state owner; the UI
- * only renders them. Phase 0 values come from the demo state holder.
+ * only renders them. The companion protocol v1 carries no battery reading,
+ * so [batteryPercent] stays null until the protocol grows one.
  */
 data class CompanionDeviceSnapshot(
     val name: String,
@@ -12,7 +13,7 @@ data class CompanionDeviceSnapshot(
     val paired: Boolean,
     val notificationsMirroring: Boolean,
     val ready: Boolean,
-    val batteryPercent: Int,
+    val batteryPercent: Int?,
     val lastSeenLabel: String,
 )
 

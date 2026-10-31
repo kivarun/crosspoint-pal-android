@@ -26,6 +26,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import fans.crosspoint.pal.AppContainer
 import fans.crosspoint.pal.R
+import fans.crosspoint.pal.ui.home.HomeEventsEffect
 import fans.crosspoint.pal.ui.home.HomeScreen
 import fans.crosspoint.pal.ui.home.HomeViewModel
 import fans.crosspoint.pal.ui.notifications.NotificationsScreen
@@ -33,6 +34,7 @@ import fans.crosspoint.pal.ui.notifications.NotificationsViewModel
 import fans.crosspoint.pal.ui.send.SendEventsEffect
 import fans.crosspoint.pal.ui.send.SendScreen
 import fans.crosspoint.pal.ui.send.SendViewModel
+import fans.crosspoint.pal.ui.settings.SettingsEventsEffect
 import fans.crosspoint.pal.ui.settings.SettingsScreen
 import fans.crosspoint.pal.ui.settings.SettingsViewModel
 import kotlinx.coroutines.launch
@@ -118,31 +120,32 @@ private fun PalNavHost(
             val viewModel: HomeViewModel = viewModel(
                 factory = remember {
                     viewModelFactory {
-                        initializer { HomeViewModel(container.demoCompanionState) }
+                        initializer { HomeViewModel(container.connectionManager) }
                     }
                 },
             )
             val state by viewModel.uiState.collectAsStateWithLifecycle()
-            val syncedMessage = stringResource(R.string.notifications_synced_message)
-            val demoMessage = stringResource(R.string.home_connect_demo_message)
             HomeScreen(
                 state = state,
+                requiredPermissions = viewModel.requiredPermissions,
                 onSendToPal = {
                     navController.navigate(PalDestination.SEND.route) { launchSingleTop = true }
                 },
-                onSyncNotifications = {
-                    viewModel.syncNotifications()
-                    onShowSnackbar(syncedMessage)
-                },
-                onConnectDevice = { onShowSnackbar(demoMessage) },
+                onConnectPressed = viewModel::onConnectPressed,
+                onDeviceSelected = viewModel::onDeviceSelected,
+                onCancelScan = viewModel::cancelScan,
+                onReconnectPressed = viewModel::onReconnectPressed,
+                onDisconnectPressed = viewModel::onDisconnectPressed,
+                onPermissionsResult = viewModel::onPermissionsResult,
             )
+            HomeEventsEffect(events = viewModel.events, onError = onShowSnackbar)
         }
 
         composable(PalDestination.SEND.route) {
             val viewModel: SendViewModel = viewModel(
                 factory = remember {
                     viewModelFactory {
-                        initializer { SendViewModel(container.demoCompanionState) }
+                        initializer { SendViewModel(container.connectionManager) }
                     }
                 },
             )
@@ -158,6 +161,7 @@ private fun PalNavHost(
                 events = viewModel.events,
                 onContentSent = onShowSnackbar,
                 onNoDevice = onShowSnackbar,
+                onSendFailed = onShowSnackbar,
             )
         }
 
@@ -165,7 +169,7 @@ private fun PalNavHost(
             val viewModel: NotificationsViewModel = viewModel(
                 factory = remember {
                     viewModelFactory {
-                        initializer { NotificationsViewModel(container.demoCompanionState) }
+                        initializer { NotificationsViewModel(container.demoNotificationState) }
                     }
                 },
             )
@@ -189,7 +193,7 @@ private fun PalNavHost(
                         initializer {
                             SettingsViewModel(
                                 themeModeStore = container.themeModeStore,
-                                demoCompanionState = container.demoCompanionState,
+                                connectionManager = container.connectionManager,
                             )
                         }
                     }
@@ -199,6 +203,7 @@ private fun PalNavHost(
             SettingsScreen(
                 state = state,
                 onThemeModeSelected = viewModel::onThemeModeSelected,
+                onDisconnectPressed = viewModel::onDisconnectPressed,
                 onForgetRequested = viewModel::onForgetRequested,
                 onForgetConfirmed = viewModel::onForgetConfirmed,
                 onForgetDismissed = viewModel::onForgetDismissed,
@@ -207,6 +212,11 @@ private fun PalNavHost(
                         launchSingleTop = true
                     }
                 },
+            )
+            SettingsEventsEffect(
+                events = viewModel.events,
+                onForgetCompleted = onShowSnackbar,
+                onForgetNeedsSystemSettings = onShowSnackbar,
             )
         }
     }

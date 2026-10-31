@@ -28,12 +28,13 @@ import fans.crosspoint.pal.R
 import fans.crosspoint.pal.ui.components.PalCard
 import fans.crosspoint.pal.ui.components.ScreenHeader
 import fans.crosspoint.pal.ui.components.SectionHeader
+import fans.crosspoint.pal.ui.components.rememberCompanionErrorMessages
 import fans.crosspoint.pal.ui.theme.CrossPointPalTheme
 import fans.crosspoint.pal.ui.theme.Spacing
 
 /**
  * Send to Pal screen: bounded content draft, approximate e-ink preview, and
- * demo send action.
+ * the acknowledged send action.
  */
 @Composable
 fun SendScreen(
@@ -66,7 +67,7 @@ fun SendScreen(
             text = stringResource(
                 R.string.send_char_count,
                 state.draft.titleCount,
-                SendDraft.TITLE_MAX_LENGTH,
+                SendDraft.TITLE_MAX_BYTES,
             ),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -87,7 +88,7 @@ fun SendScreen(
             text = stringResource(
                 R.string.send_char_count,
                 state.draft.bodyCount,
-                SendDraft.BODY_MAX_LENGTH,
+                SendDraft.BODY_MAX_BYTES,
             ),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -105,7 +106,15 @@ fun SendScreen(
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(Spacing.m, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (!state.isSessionReady) {
+                Text(
+                    text = stringResource(R.string.send_no_device_message),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             TextButton(onClick = onClear) {
                 Text(stringResource(R.string.send_action_clear))
             }
@@ -114,7 +123,13 @@ fun SendScreen(
                 enabled = state.isSendEnabled,
                 modifier = Modifier.testTag("send_action_send"),
             ) {
-                Text(stringResource(R.string.send_action_send))
+                Text(
+                    if (state.isSending) {
+                        stringResource(R.string.send_state_sending)
+                    } else {
+                        stringResource(R.string.send_action_send)
+                    },
+                )
             }
         }
     }
@@ -169,14 +184,17 @@ fun SendEventsEffect(
     events: kotlinx.coroutines.flow.Flow<SendUiEvent>,
     onContentSent: (String) -> Unit,
     onNoDevice: (String) -> Unit,
+    onSendFailed: (String) -> Unit,
 ) {
     val sentMessage = stringResource(R.string.send_sent_message)
     val noDeviceMessage = stringResource(R.string.send_no_device_message)
+    val failureMessage = rememberCompanionErrorMessages()
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
                 SendUiEvent.ContentSent -> onContentSent(sentMessage)
-                SendUiEvent.NoDeviceConnected -> onNoDevice(noDeviceMessage)
+                SendUiEvent.NoSessionReady -> onNoDevice(noDeviceMessage)
+                is SendUiEvent.SendFailed -> onSendFailed(failureMessage(event.error))
             }
         }
     }
@@ -189,7 +207,8 @@ private fun SendScreenPreview() {
         SendScreen(
             state = SendUiState(
                 draft = SendDraft(title = "Morning pages", body = "Quiet is the default state of a good reader."),
-                deviceConnected = true,
+                isSessionReady = true,
+                isSending = false,
             ),
             onTitleChange = {},
             onBodyChange = {},

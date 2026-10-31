@@ -16,6 +16,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import fans.crosspoint.pal.ui.theme.Spacing
 fun SettingsScreen(
     state: SettingsUiState,
     onThemeModeSelected: (ThemeMode) -> Unit,
+    onDisconnectPressed: () -> Unit,
     onForgetRequested: () -> Unit,
     onForgetConfirmed: () -> Unit,
     onForgetDismissed: () -> Unit,
@@ -75,20 +77,27 @@ fun SettingsScreen(
         PalCard(modifier = Modifier.fillMaxWidth()) {
             SettingsRow(
                 title = stringResource(R.string.settings_connection_label),
-                value = if (state.hasDevice) {
+                value = if (state.isConnected) {
                     stringResource(R.string.settings_connection_connected, state.deviceName.orEmpty())
                 } else {
                     stringResource(R.string.settings_connection_none)
                 },
                 onClick = null,
             )
+            if (state.isConnected) {
+                SettingsRow(
+                    title = stringResource(R.string.settings_action_disconnect),
+                    value = "",
+                    onClick = onDisconnectPressed,
+                )
+            }
         }
 
         SectionHeader(text = stringResource(R.string.settings_pairing_section))
         PalCard(modifier = Modifier.fillMaxWidth()) {
             SettingsRow(
                 title = stringResource(R.string.settings_pairing_label),
-                value = if (state.hasDevice) {
+                value = if (state.isPaired) {
                     stringResource(R.string.settings_pairing_bonded, state.deviceName.orEmpty())
                 } else {
                     stringResource(R.string.settings_pairing_none)
@@ -147,6 +156,25 @@ fun SettingsScreen(
             onConfirm = onForgetConfirmed,
             onDismiss = onForgetDismissed,
         )
+    }
+}
+
+/** Collects one-shot Settings events and reports them to the host scaffold. */
+@Composable
+fun SettingsEventsEffect(
+    events: kotlinx.coroutines.flow.Flow<SettingsUiEvent>,
+    onForgetCompleted: (String) -> Unit,
+    onForgetNeedsSystemSettings: (String) -> Unit,
+) {
+    val completedMessage = stringResource(R.string.settings_forget_completed)
+    val bondFailedMessage = stringResource(R.string.settings_forget_bond_failed)
+    LaunchedEffect(events) {
+        events.collect { event ->
+            when (event) {
+                SettingsUiEvent.ForgetCompleted -> onForgetCompleted(completedMessage)
+                SettingsUiEvent.ForgetNeedsSystemSettings -> onForgetNeedsSystemSettings(bondFailedMessage)
+            }
+        }
     }
 }
 
@@ -280,10 +308,13 @@ private fun SettingsScreenPreview() {
         SettingsScreen(
             state = SettingsUiState(
                 themeMode = ThemeMode.SYSTEM,
-                deviceName = "X4 Classic",
+                deviceName = "CrossPoint Pal",
+                isConnected = true,
+                isPaired = true,
                 showForgetDialog = false,
             ),
             onThemeModeSelected = {},
+            onDisconnectPressed = {},
             onForgetRequested = {},
             onForgetConfirmed = {},
             onForgetDismissed = {},
