@@ -1,26 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Quiet launcher mark: a page of text lines inside a dark rounded frame. -->
+<!-- CrossPoint Pal: solid P + folded page. Circular-mask safe (glyph radius 32.60dp, viewport 108dp). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#221E18"
-        android:pathData="M30,30 h48 a6,6 0 0 1 6,6 v36 a6,6 0 0 1 -6,6 h-48 a6,6 0 0 1 -6,-6 v-36 a6,6 0 0 1 6,-6 z" />
-    <path
-        android:strokeColor="#FAF6EE"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M36,42 h36" />
-    <path
-        android:strokeColor="#FAF6EE"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M36,52 h36" />
-    <path
-        android:strokeColor="#FAF6EE"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M36,62 h22" />
+    <group android:translateX="19.1600" android:translateY="21.1700"
+        android:scaleX="0.6700" android:scaleY="0.6700">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M 27,11 H 65 L 87,33 V 74 C 87,82 80,87 72,87 H 37 V 79 H 71 C 75,79 77,77 77,73 V 37 H 71 C 62,37 58,32 58,24 V 21 H 27 C 24,21 25,23 25,27 V 87 H 24 C 20,87 17,84 17,78 V 28 C 17,18 20,11 27,11 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M 33,87 V 42 H 53 C 66,42 72,48 72,56 C 72,62 65,63 54,63 H 44 V 87 Z" />
+    </group>
 </vector>
