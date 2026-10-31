@@ -7,34 +7,42 @@ repository owns the Android application: its lifecycle, permissions, and user
 experience. See [MANIFESTO.md](MANIFESTO.md) for the product boundary and
 [AGENTS.md](AGENTS.md) for how agents work in this repository.
 
-## Current status: Phase 0 (UI skeleton)
+## Current status: Phase 1 (BLE companion v1)
 
-The repository contains a working application skeleton: four root screens,
-navigation, a light/dark "e-ink paper" design system, and demo state. All
-device-facing behavior is intentionally simulated by an in-memory demo state
-holder.
+The repository contains a working application skeleton with the first real
+companion transport: a BLE GATT client for the CrossPoint Pal reader,
+protected pairing, bounded text sending, and physical-button events.
 
-What exists in Phase 0:
+What exists in Phase 1:
 
-- Home / device screen with a device card, status indicators, and primary
-  actions, including a no-device state;
-- Send to Pal screen with bounded title/body fields, character counts, an
-  approximate e-ink preview, and a demo send action;
-- Notifications screen with a mirroring master switch, demo app sources, and
-  a demo sync status (no Android notification access is involved);
-- Settings screen with a working theme preference (System / Light / Dark,
-  persisted locally), connection and pairing summaries, privacy pointer,
-  about row, and a confirmable demo "Forget device" action;
-- bottom navigation across the four root screens with state preservation;
-- light and dark themes built on a warm paper / charcoal palette;
-- unit tests and Robolectric-hosted Compose UI tests.
+- BLE scan for the companion service UUID, device selection, and the system
+  pairing dialog (six-digit passkey, bond + MITM + Secure Connections; no
+  unencrypted fallback);
+- one connection owner (`CompanionConnectionManager`) with the protocol
+  sequencing from the firmware contract: MTU 517 negotiation, service
+  discovery, Event-characteristic subscription, `hello`/`hello_ack`
+  handshake, acknowledged `content` sends, and `button`/`error` handling;
+- Home: scan, connect, live connection phases, real disconnect/reconnect,
+  and the latest device button event;
+- Send to Pal: title/body drafts bounded by the protocol byte limits,
+  acknowledged sends (success only after `content_ack` for the exact
+  contentId), in-flight and error states;
+- Settings: live connection and pairing summaries, disconnect, and a
+  Forget-device action that clears the app identity and removes the system
+  bond where the platform permits it;
+- notifications screen: still the Phase 0 demo; no Android notification
+  access is involved.
 
-Explicitly **not implemented** in this phase:
+Explicitly **not implemented** yet:
 
-- Bluetooth Low Energy: no scanning, no GATT, no pairing (demo state only);
-- Android Notification Access: not requested, no `NotificationListenerService`;
-- background sync: no background workers or services;
-- Wi-Fi: no Wi-Fi permissions or transfer.
+- Android Notification Access and background notification mirroring;
+- background execution: the BLE session is user-initiated and
+  foreground-scoped; there is no reconnect service or scan loop;
+- Wi-Fi transport and BLE wake from deep sleep;
+- multiple simultaneously connected devices.
+
+Real BLE pairing, reconnect, and button-event behavior require a physical
+X4 Classic and are verified by hardware UAT, not by host tests.
 
 ## Building
 

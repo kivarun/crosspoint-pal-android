@@ -489,10 +489,14 @@ Environment requirements:
 - The Android SDK location comes from `ANDROID_HOME`/`ANDROID_SDK_ROOT` or a
   gitignored `local.properties`; never commit one.
 
-Phase 0 uses demo state for everything device-facing. There is deliberately
-no Bluetooth, notification listener, background worker, or persistence beyond
-the theme preference (DataStore). Do not add these for planned features; the
-BLE phase establishes them when the protocol contract exists.
+The BLE companion transport and session (protocol v1) live in
+`app/src/main/kotlin/fans/crosspoint/pal/ble/` with a single GATT/session
+owner (`CompanionConnectionManager`). Device-facing screens read manager
+state; the remaining presentation data is still demo state. There is
+deliberately no notification listener, background worker, automatic
+reconnect, or persistence beyond the theme preference (DataStore) and the
+paired-device identity. Do not add these for planned features; each arrives
+with its own demonstrated workflow and protocol contract.
 
 ## Handoff
 
@@ -518,3 +522,23 @@ surface.
 Do not call work complete while a required real-device behavior remains
 untested; call the software work complete and the hardware/UAT status
 separately.
+
+## Persistent working files
+
+Files that must survive beyond a single tool call (debug keystores, local
+verification caches, collected logs intended for later review, shared test
+fixtures) belong in one of exactly two places:
+
+- **inside the project** — when a later build or test in this checkout must
+  find them without a network or the exchange directory; gitignore them if
+  they are machine-specific or generated;
+- **in `/exchange`** — when the artifact must also be reachable outside the
+  project workspace (deliverables in `/exchange/outbox`, durable shared state
+  such as the shared debug keystore under `/exchange/scratch`).
+
+Do not scatter persistent working files across ad-hoc home-directory paths
+(such as `~/.android`); when a tool expects a well-known location, redirect it
+explicitly (for example `user.home` for the Android debug keystore) so every
+environment that builds the app signs and caches identically. Temporary files
+with no value after the current task still go to `/tmp` or
+`/exchange/scratch`.
