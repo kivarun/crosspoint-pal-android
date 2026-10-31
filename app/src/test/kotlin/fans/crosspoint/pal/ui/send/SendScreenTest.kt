@@ -1,7 +1,6 @@
 package fans.crosspoint.pal.ui.send
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -10,8 +9,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
-import androidx.test.core.app.ApplicationProvider
-import fans.crosspoint.pal.CrossPointPalApplication
 import fans.crosspoint.pal.MainActivity
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -21,6 +18,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
+/**
+ * Send screen behaviour without a connected session: the form works, the
+ * counters use the protocol byte bounds, and the send action stays disabled
+ * until a ready companion session exists.
+ */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [36])
@@ -29,23 +31,20 @@ class SendScreenTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
-    private val demo get() = ApplicationProvider.getApplicationContext<CrossPointPalApplication>()
-        .container.demoCompanionState
-
     private fun openSendTab() {
         composeRule.onNodeWithText("Send").performClick()
         composeRule.waitForIdle()
     }
 
     @Test
-    fun sendIsDisabledUntilBothFieldsHaveContent() {
+    fun sendStaysDisabledWithoutAReadySession() {
         openSendTab()
 
         composeRule.onNodeWithTag("send_title_input").performTextInput("Morning")
-        composeRule.onNodeWithTag("send_action_send").assertIsNotEnabled()
-
         composeRule.onNodeWithTag("send_body_input").performTextInput("Quiet body")
-        composeRule.onNodeWithTag("send_action_send").assertIsEnabled()
+
+        composeRule.onNodeWithTag("send_action_send").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithText("No connected session").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -57,39 +56,9 @@ class SendScreenTest {
         composeRule.onNodeWithText("Clear").performScrollTo().performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("0 / 48").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("0 / 400").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("send_action_send").assertIsNotEnabled()
-    }
-
-    @Test
-    fun sendReportsSentAndClearsTheDraft() {
-        openSendTab()
-        composeRule.onNodeWithTag("send_title_input").performTextInput("Morning")
-        composeRule.onNodeWithTag("send_body_input").performTextInput("Quiet body")
-
-        composeRule.onNodeWithTag("send_action_send").performScrollTo().performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithText("Sent to Pal").fetchSemanticsNodes().isNotEmpty()
-        }
-
-        composeRule.onNodeWithText("Sent to Pal").assertIsDisplayed()
-        composeRule.onNodeWithText("0 / 48").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("0 / 400").performScrollTo().assertIsDisplayed()
-    }
-
-    @Test
-    fun sendStaysDisabledWithoutADevice() {
-        demo.forgetDevice()
-        composeRule.waitForIdle()
-        openSendTab()
-
-        composeRule.onNodeWithTag("send_title_input").performTextInput("Morning")
-        composeRule.onNodeWithTag("send_body_input").performTextInput("Quiet body")
-
-        // The demo device is gone, so the send action stays disabled.
-        composeRule.onNodeWithTag("send_action_send").assertIsNotEnabled()
-        assertTrue(demo.device.value == null)
+        composeRule.onNodeWithText("0 / 64").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("0 / 384").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("send_action_send").performScrollTo().assertIsNotEnabled()
     }
 
     @Test

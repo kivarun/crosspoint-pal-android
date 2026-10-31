@@ -3,17 +3,17 @@ package fans.crosspoint.pal.ui.settings
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.test.core.app.ApplicationProvider
-import fans.crosspoint.pal.CrossPointPalApplication
 import fans.crosspoint.pal.MainActivity
 import fans.crosspoint.pal.domain.ThemeMode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import androidx.test.core.app.ApplicationProvider
+import fans.crosspoint.pal.CrossPointPalApplication
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -22,6 +22,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
+/**
+ * Settings screen behaviour in the app's start state: the theme preference
+ * works, and pairing/connection summaries report the real (empty) state.
+ * Forget-device flows against a real bond need hardware UAT.
+ */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [36])
@@ -67,30 +72,21 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun forgetDeviceRequiresConfirmationAndThenClearsTheState() {
+    fun startStateReportsAnEmptyConnectionAndPairing() {
         openSettingsTab()
 
-        composeRule.onNodeWithText("Forget device").performScrollTo().performClick()
-        composeRule.onNodeWithText("Forget X4 Classic?").assertIsDisplayed()
-
-        composeRule.onNodeWithText("Cancel").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("Forget X4 Classic?").assertDoesNotExist()
-        assertEquals("X4 Classic", app.container.demoCompanionState.device.value?.name)
-
-        composeRule.onNodeWithText("Forget device").performScrollTo().performClick()
-        composeRule.onNodeWithText("Forget").performClick()
-        composeRule.waitForIdle()
-
-        composeRule.onNodeWithText("Forget X4 Classic?").assertDoesNotExist()
-        assertNull(app.container.demoCompanionState.device.value)
+        composeRule.onNodeWithText("Not connected").performScrollTo().assertIsDisplayed()
+        // The value appears both as the pairing summary and on the forget row.
+        composeRule.onAllNodesWithText("No bonded device").onFirst().performScrollTo().assertIsDisplayed()
     }
 
     @Test
-    fun connectionAndPairingSummariesReflectTheDevice() {
+    fun forgetDeviceWithoutADeviceDoesNotOpenTheDialog() {
         openSettingsTab()
 
-        composeRule.onNodeWithText("Connected to X4 Classic").assertIsDisplayed()
-        composeRule.onNodeWithText("Bonded device: X4 Classic").assertIsDisplayed()
+        composeRule.onNodeWithText("Forget device").performScrollTo().performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Forget CrossPoint Pal?").assertDoesNotExist()
     }
 }

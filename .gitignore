@@ -14,3 +14,7 @@ captures/
 
 # Local machine configuration
 local.properties
+
+# Local docker-based verification caches (Robolectric on musl hosts)
+.docker-cache/
+.docker-gradle/

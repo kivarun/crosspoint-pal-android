@@ -1,6 +1,9 @@
 package fans.crosspoint.pal.ui.settings
 
-import fans.crosspoint.pal.data.DemoCompanionState
+import fans.crosspoint.pal.ble.CompanionIdentity
+import fans.crosspoint.pal.ble.FakeGattTransport
+import fans.crosspoint.pal.ble.InMemoryCompanionIdentityStore
+import fans.crosspoint.pal.ble.managerWithFakes
 import fans.crosspoint.pal.data.InMemoryThemeModeStore
 import fans.crosspoint.pal.domain.ThemeMode
 import kotlinx.coroutines.Dispatchers
@@ -9,12 +12,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -23,14 +26,10 @@ import org.junit.Test
 class SettingsViewModelTest {
 
     private val mainDispatcher = UnconfinedTestDispatcher()
-    private lateinit var themeStore: InMemoryThemeModeStore
-    private lateinit var demo: DemoCompanionState
 
     @Before
     fun setUp() {
         Dispatchers.setMain(mainDispatcher)
-        themeStore = InMemoryThemeModeStore()
-        demo = DemoCompanionState()
     }
 
     @After
@@ -40,7 +39,8 @@ class SettingsViewModelTest {
 
     @Test
     fun `theme selection is persisted in the store`() = runTest {
-        val viewModel = SettingsViewModel(themeStore, demo)
+        val themeStore = InMemoryThemeModeStore()
+        val viewModel = SettingsViewModel(themeStore, managerWithFakes())
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect { } }
 
         viewModel.onThemeModeSelected(ThemeMode.DARK)
@@ -53,8 +53,14 @@ class SettingsViewModelTest {
 
     @Test
     fun `forget request shows the dialog and dismiss hides it`() = runTest {
-        val viewModel = SettingsViewModel(themeStore, demo)
+        val identityStore = InMemoryCompanionIdentityStore()
+        identityStore.setIdentity(CompanionIdentity("AA:BB", "CrossPoint Pal"))
+        val viewModel = SettingsViewModel(
+            InMemoryThemeModeStore(),
+            managerWithFakes(identityStore = identityStore),
+        )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect { } }
+        testScheduler.runCurrent()
 
         viewModel.onForgetRequested()
         assertTrue(viewModel.uiState.value.showForgetDialog)
@@ -62,19 +68,54 @@ class SettingsViewModelTest {
         viewModel.onForgetDismissed()
         assertFalse(viewModel.uiState.value.showForgetDialog)
         // A dismissed dialog forgets nothing.
-        assertEquals("X4 Classic", viewModel.uiState.value.deviceName)
+        assertEquals("CrossPoint Pal", viewModel.uiState.value.deviceName)
     }
 
     @Test
-    fun `forget confirmation clears the device state`() = runTest {
-        val viewModel = SettingsViewModel(themeStore, demo)
+    fun `forget confirmation clears identity and reports completion`() = runTest {
+        val transport = FakeGattTransport()
+        val identityStore = InMemoryCompanionIdentityStore()
+        identityStore.setIdentity(CompanionIdentity("AA:BB", "CrossPoint Pal"))
+        val viewModel = SettingsViewModel(
+            InMemoryThemeModeStore(),
+            managerWithFakes(transport = transport, identityStore = identityStore),
+        )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect { } }
+        val events = mutableListOf<SettingsUiEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.events.collect(events::add) }
+        testScheduler.runCurrent()
+        assertTrue(viewModel.uiState.value.hasDevice)
 
         viewModel.onForgetRequested()
         viewModel.onForgetConfirmed()
+        testScheduler.runCurrent()
 
-        assertNull(demo.device.value)
+        assertEquals("AA:BB", transport.bondsRemoved.single())
         assertFalse(viewModel.uiState.value.showForgetDialog)
+        assertFalse(viewModel.uiState.value.hasDevice)
+        assertEquals(listOf<SettingsUiEvent>(SettingsUiEvent.ForgetCompleted), events)
+    }
+
+    @Test
+    fun `forget reports when the system bond needs manual removal`() = runTest {
+        val transport = FakeGattTransport().apply { removeBondResult = false }
+        val identityStore = InMemoryCompanionIdentityStore()
+        identityStore.setIdentity(CompanionIdentity("AA:BB", "CrossPoint Pal"))
+        val viewModel = SettingsViewModel(
+            InMemoryThemeModeStore(),
+            managerWithFakes(transport = transport, identityStore = identityStore),
+        )
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect { } }
+        val events = mutableListOf<SettingsUiEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.events.collect(events::add) }
+        testScheduler.runCurrent()
+
+        viewModel.onForgetRequested()
+        viewModel.onForgetConfirmed()
+        testScheduler.runCurrent()
+
+        assertEquals(listOf<SettingsUiEvent>(SettingsUiEvent.ForgetNeedsSystemSettings), events)
+        // The app-side identity is cleared either way.
         assertFalse(viewModel.uiState.value.hasDevice)
     }
 }

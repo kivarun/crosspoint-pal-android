@@ -27,8 +27,8 @@ class NavigationTest {
     fun bottomNavigationReachesAllFourRootScreens() {
         composeRule.waitForIdle()
 
-        // Home is the start destination.
-        composeRule.onNodeWithText("Last button event").assertIsDisplayed()
+        // Home is the start destination; no companion device is connected.
+        composeRule.onNodeWithText("No device connected").assertIsDisplayed()
 
         composeRule.onNodeWithText("Send").performClick()
         composeRule.onNodeWithText("E-ink preview").performScrollTo().assertIsDisplayed()
@@ -40,7 +40,7 @@ class NavigationTest {
         composeRule.onNodeWithText("Forget device").performScrollTo().assertIsDisplayed()
 
         composeRule.onNodeWithText("Home").performClick()
-        composeRule.onNodeWithText("Last button event").assertIsDisplayed()
+        composeRule.onNodeWithText("No device connected").assertIsDisplayed()
     }
 
     @Test
@@ -52,19 +52,20 @@ class NavigationTest {
         composeRule.onNodeWithTag("send_body_input").performTextInput("Draft body")
 
         composeRule.onNodeWithText("Home").performClick()
-        composeRule.onNodeWithText("Last button event").assertIsDisplayed()
+        composeRule.onNodeWithText("No device connected").assertIsDisplayed()
 
         composeRule.onNodeWithText("Send").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("send_title_input").performTextInput("!")
-        composeRule.onNodeWithText("5 / 48").assertIsDisplayed()
+        composeRule.onNodeWithText("5 / 64").assertIsDisplayed()
     }
 
     @Test
-    fun sendToPalActionNavigatesToTheSendScreen() {
+    fun sendToPalActionAppearsOnlyWithAReadySession() {
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Send to Pal").performClick()
-        composeRule.onNodeWithText("E-ink preview").performScrollTo().assertIsDisplayed()
+        // No session is connected in the app's start state.
+        composeRule.onNodeWithText("Send to Pal").assertDoesNotExist()
+        composeRule.onNodeWithText("Connect device").assertIsDisplayed()
     }
 }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Test-only: Robolectric Compose tests need a resolvable ComponentActivity
+     (robolectric#4736). ui-test-manifest already declares the same activity;
+     this keeps the debug app manifest in agreement with it. The release
+     variant is unaffected. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <activity
+            android:name="androidx.activity.ComponentActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
+    </application>
+</manifest>

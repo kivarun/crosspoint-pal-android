@@ -3,9 +3,8 @@ package fans.crosspoint.pal.ui.home
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.test.core.app.ApplicationProvider
-import fans.crosspoint.pal.CrossPointPalApplication
 import fans.crosspoint.pal.MainActivity
 import org.junit.Rule
 import org.junit.Test
@@ -14,6 +13,12 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
+/**
+ * UI behaviour of the Home screen in the app's start state: no companion
+ * device is connected, so the connect workflow is offered and content
+ * actions stay hidden. Real BLE behaviour needs hardware and is covered by
+ * device UAT, not here.
+ */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [36])
@@ -22,36 +27,25 @@ class HomeScreenTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
-    private val demo get() = ApplicationProvider.getApplicationContext<CrossPointPalApplication>()
-        .container.demoCompanionState
-
     @Test
-    fun connectedHomeShowsDeviceStatusAndActions() {
-        composeRule.waitForIdle()
-
-        composeRule.onNodeWithText("X4 Classic").assertIsDisplayed()
-        composeRule.onNodeWithText("Connected").assertIsDisplayed()
-        composeRule.onNodeWithText("Battery 73%").assertIsDisplayed()
-        composeRule.onNodeWithText("Last seen: now").assertIsDisplayed()
-        composeRule.onNodeWithText("Paired").assertIsDisplayed()
-        composeRule.onNodeWithText("Notifications on").assertIsDisplayed()
-        composeRule.onNodeWithText("Ready").assertIsDisplayed()
-        composeRule.onNodeWithText("Send to Pal").assertIsDisplayed()
-        composeRule.onNodeWithText("Sync notifications").assertIsDisplayed()
-        composeRule.onNodeWithText("Right button").performScrollTo().assertIsDisplayed()
-    }
-
-    @Test
-    fun forgettingTheDeviceShowsTheEmptyStateInsteadOfActions() {
-        composeRule.waitForIdle()
-
-        demo.forgetDevice()
+    fun startStateOffersTheConnectWorkflowWithoutContentActions() {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("No device connected").assertIsDisplayed()
         composeRule.onNodeWithText("Connect device").assertIsDisplayed()
         composeRule.onNodeWithText("Send to Pal").assertDoesNotExist()
-        composeRule.onNodeWithText("Sync notifications").assertDoesNotExist()
-        composeRule.onNodeWithText("Right button").assertDoesNotExist()
+        composeRule.onNodeWithText("Last button event").assertDoesNotExist()
+        composeRule.onNodeWithText("Scanning…").assertDoesNotExist()
+    }
+
+    @Test
+    fun connectPressedWithoutPermissionsDoesNotStartAScan() {
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Connect device").performClick()
+        composeRule.waitForIdle()
+
+        // Permissions are requested first; no scan UI appears without them.
+        composeRule.onNodeWithText("Scanning…").assertDoesNotExist()
     }
 }
