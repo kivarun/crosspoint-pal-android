@@ -188,33 +188,38 @@ private fun DeviceCard(
                     ) {
                         Text(stringResource(R.string.home_action_disconnect))
                     }
-                } else if (!state.isConnecting) {
+                } else {
                     // A remembered device must always offer its way back into
                     // a session: after a process restart the phase is Idle,
                     // and without this button the only route to a working
                     // state was Forget Device plus a fresh scan and pairing.
+                    // Both entry points stay visible but disabled while an
+                    // incompatible operation (scan, connect attempt, running
+                    // wait) owns the radio, so they cannot compete.
+                    val busy = state.isConnecting || state.isScanning ||
+                        state.awaitWake == AwaitWakeState.Waiting
                     Button(
                         onClick = onReconnectPressed,
+                        enabled = !busy,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = Spacing.l),
                     ) {
                         Text(stringResource(R.string.home_action_reconnect))
                     }
-                    // The bounded diagnostic wait only makes sense for a
-                    // paired, currently unconnected reader; the session, the
-                    // manual scan, and a running wait exclude it.
-                    if (device.paired && !state.isScanning &&
-                        state.awaitWake == AwaitWakeState.Idle
+                    // The bounded diagnostic wait is always offered for an
+                    // unconnected remembered device so the user can rely on
+                    // finding it during hardware UAT; it stays disabled while
+                    // an operation is active and for an unpaired device, where
+                    // starting it would only produce a NotPaired failure.
+                    OutlinedButton(
+                        onClick = onAwaitWakePressed,
+                        enabled = device.paired && !busy,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = Spacing.s),
                     ) {
-                        OutlinedButton(
-                            onClick = onAwaitWakePressed,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = Spacing.s),
-                        ) {
-                            Text(stringResource(R.string.home_action_await_wake))
-                        }
+                        Text(stringResource(R.string.home_action_await_wake))
                     }
                 }
             }

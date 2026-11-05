@@ -2,10 +2,13 @@ package fans.crosspoint.pal.ui.home
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import fans.crosspoint.pal.ble.AwaitWakeState
 import fans.crosspoint.pal.domain.CompanionDeviceSnapshot
 import fans.crosspoint.pal.ble.LinkPhase
 import fans.crosspoint.pal.ui.theme.CrossPointPalTheme
@@ -43,7 +46,12 @@ class HomeScreenReconnectTest {
         lastSeenLabel = "just now",
     )
 
-    private fun setState(device: CompanionDeviceSnapshot?, phase: LinkPhase) {
+    private fun setState(
+        device: CompanionDeviceSnapshot?,
+        phase: LinkPhase,
+        isScanning: Boolean = false,
+        awaitWake: AwaitWakeState = AwaitWakeState.Idle,
+    ) {
         composeRule.setContent {
             CrossPointPalTheme {
                 HomeScreen(
@@ -51,9 +59,10 @@ class HomeScreenReconnectTest {
                         device = device,
                         lastEvent = null,
                         phase = phase,
-                        isScanning = false,
+                        isScanning = isScanning,
                         scannedDevices = emptyList(),
                         needsPermissions = false,
+                        awaitWake = awaitWake,
                     ),
                     requiredPermissions = emptyList(),
                     onSendToPal = {},
@@ -100,5 +109,44 @@ class HomeScreenReconnectTest {
 
         composeRule.onNodeWithText("Disconnect").assertIsDisplayed()
         composeRule.onAllNodesWithText("Reconnect").assertCountEquals(0)
+    }
+
+    @Test
+    fun `reconnect stays visible but disabled while a connect attempt runs`() {
+        setState(rememberedDevice(connected = false), LinkPhase.Connecting)
+
+        composeRule.onAllNodesWithText("Reconnect")[0].assertIsNotEnabled()
+    }
+
+    @Test
+    fun `reconnect stays visible but disabled while a scan runs`() {
+        setState(rememberedDevice(connected = false), LinkPhase.Idle, isScanning = true)
+
+        composeRule.onAllNodesWithText("Reconnect")[0].assertIsNotEnabled()
+    }
+
+    @Test
+    fun `reconnect stays visible but disabled while the wait runs`() {
+        setState(rememberedDevice(connected = false), LinkPhase.Idle, awaitWake = AwaitWakeState.Waiting)
+
+        composeRule.onAllNodesWithText("Reconnect")[0].assertIsNotEnabled()
+    }
+
+    @Test
+    fun `reconnect is enabled again after the wait times out`() {
+        setState(rememberedDevice(connected = false), LinkPhase.Idle, awaitWake = AwaitWakeState.TimedOut)
+
+        composeRule.onAllNodesWithText("Reconnect")[0].assertIsEnabled()
+    }
+
+    @Test
+    fun `reconnect is enabled again after the wait fails`() {
+        setState(
+            rememberedDevice(connected = false),
+            LinkPhase.Idle,
+            awaitWake = AwaitWakeState.Failed(fans.crosspoint.pal.ble.CompanionError.ScanFailed),
+        )
+
+        composeRule.onAllNodesWithText("Reconnect")[0].assertIsEnabled()
     }
 }

@@ -1,7 +1,11 @@
 package fans.crosspoint.pal.ui.home
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import fans.crosspoint.pal.ble.AwaitWakeState
@@ -19,8 +23,10 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * UI behaviour of the Home screen's bounded await-wake diagnostic: the
- * action is offered for a paired unconnected device, the running wait shows
- * its cancellation, and the terminal outcomes render their own messages.
+ * action stays visible for every unconnected remembered device and is
+ * disabled exactly while an incompatible operation (scan, connect attempt,
+ * running wait) is active or the bond is gone; the running wait shows its
+ * cancellation, and the terminal outcomes render their own messages.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -47,6 +53,7 @@ class HomeScreenAwaitWakeTest {
         awaitWake: AwaitWakeState,
         device: CompanionDeviceSnapshot? = pairedDevice(connected = false),
         phase: LinkPhase = LinkPhase.Idle,
+        isScanning: Boolean = false,
     ) {
         awaitPressed = 0
         cancelPressed = 0
@@ -57,7 +64,7 @@ class HomeScreenAwaitWakeTest {
                         device = device,
                         lastEvent = null,
                         phase = phase,
-                        isScanning = false,
+                        isScanning = isScanning,
                         scannedDevices = emptyList(),
                         needsPermissions = false,
                         awaitWake = awaitWake,
@@ -77,33 +84,49 @@ class HomeScreenAwaitWakeTest {
         }
     }
 
+    /** The action node: the button must be visible in every unconnected state. */
+    private fun awaitAction() = composeRule.onAllNodesWithText("Await next wake")
+
     @Test
-    fun `a paired device offers the diagnostic wait`() {
+    fun `idle with a paired device offers an enabled diagnostic wait`() {
         setState(AwaitWakeState.Idle)
 
-        composeRule.onNodeWithText("Await next wake").assertIsDisplayed()
-        composeRule.onNodeWithText("Await next wake").performClick()
+        awaitAction().assertCountEquals(1)
+        awaitAction()[0].assertIsDisplayed()
+        awaitAction()[0].assertIsEnabled()
+        awaitAction()[0].performClick()
         composeRule.waitForIdle()
 
         assertEquals(1, awaitPressed)
     }
 
     @Test
-    fun `a connected device offers no diagnostic wait`() {
-        setState(AwaitWakeState.Idle, device = pairedDevice(connected = true), phase = LinkPhase.Ready)
+    fun `the action stays visible but disabled while a connect attempt runs`() {
+        setState(AwaitWakeState.Idle, phase = LinkPhase.Connecting)
 
-        composeRule.onNodeWithText("Await next wake").assertDoesNotExist()
+        awaitAction().assertCountEquals(1)
+        awaitAction()[0].assertIsDisplayed()
+        awaitAction()[0].assertIsNotEnabled()
     }
 
     @Test
-    fun `a running wait shows its hint and cancellation`() {
+    fun `the action stays visible but disabled while a scan runs`() {
+        setState(AwaitWakeState.Idle, isScanning = true)
+
+        awaitAction().assertCountEquals(1)
+        awaitAction()[0].assertIsDisplayed()
+        awaitAction()[0].assertIsNotEnabled()
+    }
+
+    @Test
+    fun `the action stays visible but disabled while the wait runs`() {
         setState(AwaitWakeState.Waiting)
 
-        composeRule.onNodeWithText("Awaiting wake…").assertIsDisplayed()
-        composeRule.onNodeWithText("Cancel").assertIsDisplayed()
-        // The starting action is replaced by the running wait's card.
-        composeRule.onNodeWithText("Await next wake").assertDoesNotExist()
+        awaitAction().assertCountEquals(1)
+        awaitAction()[0].assertIsDisplayed()
+        awaitAction()[0].assertIsNotEnabled()
 
+        composeRule.onNodeWithText("Awaiting wake…").assertIsDisplayed()
         composeRule.onNodeWithText("Cancel").performClick()
         composeRule.waitForIdle()
 
@@ -111,17 +134,40 @@ class HomeScreenAwaitWakeTest {
     }
 
     @Test
-    fun `a timed out wait reports the outcome`() {
+    fun `the action is enabled again after a timeout`() {
         setState(AwaitWakeState.TimedOut)
 
+        awaitAction().assertCountEquals(1)
+        awaitAction()[0].assertIsEnabled()
         composeRule.onNodeWithText("No wake detected within 60 seconds.").assertIsDisplayed()
     }
 
     @Test
-    fun `a failed wait shows the typed error`() {
+    fun `the action is enabled again after a failure`() {
         setState(AwaitWakeState.Failed(CompanionError.NotPaired))
 
+        awaitAction().assertCountEquals(1)
+        awaitAction()[0].assertIsEnabled()
         composeRule.onNodeWithText("No paired Pal is available to wait for.").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the action stays visible but disabled for an unpaired device`() {
+        setState(
+            AwaitWakeState.Idle,
+            device = pairedDevice(connected = false).copy(paired = false),
+        )
+
+        awaitAction().assertCountEquals(1)
+        awaitAction()[0].assertIsDisplayed()
+        awaitAction()[0].assertIsNotEnabled()
+    }
+
+    @Test
+    fun `a connected device offers no diagnostic wait`() {
+        setState(AwaitWakeState.Idle, device = pairedDevice(connected = true), phase = LinkPhase.Ready)
+
+        composeRule.onNodeWithText("Await next wake").assertDoesNotExist()
     }
 
     @Test
