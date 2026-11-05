@@ -50,6 +50,9 @@ sealed interface CompanionError {
     /** The reader rejected the phone's protocol version. */
     data object IncompatibleVersion : CompanionError
 
+    /** No paired companion identity (or its system bond) is available. */
+    data object NotPaired : CompanionError
+
     data class SetupTimeout(val phase: LinkPhase) : CompanionError
 
     data class SendRejected(val code: String, val message: String) : CompanionError
@@ -78,3 +81,25 @@ data class ScannedDevice(
     val address: String,
     val name: String?,
 )
+
+/**
+ * State of the bounded diagnostic wait for the paired reader's next wake
+ * advertisement. One wait scans one bounded window, connects at most once,
+ * and never loops or retries.
+ */
+sealed interface AwaitWakeState {
+    /** No wait is running; the previous outcome is retained until the next wait. */
+    data object Idle : AwaitWakeState
+
+    /** The bounded scan window is open, waiting for the paired reader. */
+    data object Waiting : AwaitWakeState
+
+    /** The window elapsed without the paired reader advertising. */
+    data object TimedOut : AwaitWakeState
+
+    /** The paired reader appeared and the session reached Ready. */
+    data object Connected : AwaitWakeState
+
+    /** The wait ended in a typed failure before or during the session. */
+    data class Failed(val error: CompanionError) : AwaitWakeState
+}

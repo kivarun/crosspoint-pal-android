@@ -31,6 +31,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.cancelAndJoin
 
 /**
  * The single owner of the companion GATT connection and session.
@@ -38,7 +40,9 @@ import kotlinx.coroutines.withTimeout
  * All screens express intent here (scan, connect, send, disconnect, forget);
  * no screen, notification, or background component creates its own GATT
  * lifecycle. The session is user-initiated and foreground-scoped: there is no
- * background service, automatic reconnect, or scan loop.
+ * background service, automatic reconnect, or scan loop. The one exception is
+ * the bounded, user-initiated await-wake diagnostic below; it opens a single
+ * scan window, connects at most once, and never retries.
  *
  * Protocol sequencing follows the firmware contract: MTU before service
  * discovery, `hello` before any other message, content sends acknowledged by
@@ -136,6 +140,9 @@ class CompanionConnectionManager(
     /** Starts a bounded scan; emits on [errorEvents] when guards fail. */
     fun startScan() {
         if (scanningInternal.value) return
+        // One scan owner at a time: the await-wake window owns the scanner
+        // while it runs.
+        if (awaitJob?.isActive == true) return
         if (environment.missingPermissions().isNotEmpty()) {
             errorEventsInternal.tryEmit(CompanionError.PermissionsMissing)
             return
@@ -176,16 +183,137 @@ class CompanionConnectionManager(
         scanningInternal.value = false
     }
 
+    // --- Await-wake diagnostic ---
+
+    private val awaitWakeInternal = MutableStateFlow<AwaitWakeState>(AwaitWakeState.Idle)
+
+    /** Diagnostic state of the bounded wait for the paired reader's wake. */
+    val awaitWake: StateFlow<AwaitWakeState> = awaitWakeInternal.asStateFlow()
+
+    private var awaitJob: Job? = null
+
+    // Set while the wait owns the session attempt it started; consumed by
+    // cancelAwaitWake so a user cancel also aborts that attempt.
+    @Volatile
+    private var awaitInitiatedSession = false
+
+    /**
+     * Starts one bounded diagnostic wait for the paired reader's next wake
+     * advertisement.
+     *
+     * Identity policy: the wait connects only to the stored, bonded
+     * companion. A scan result matches only when its address equals the
+     * stored identity address; a bare Service-UUID advertisement never is.
+     * Under BLE privacy the reader advertises with an RPA, and the platform
+     * resolves it against the bond's IRK and reports the identity address in
+     * the scan result; if a stack does not resolve, the wait times out —
+     * it never connects to an unresolved address.
+     *
+     * The window is bounded ([AWAKE_WINDOW_MS]); at most one session attempt
+     * is started, and there is no retry or scan loop. The diagnostic ends
+     * when the session reaches a terminal phase, on window timeout, or on
+     * failure.
+     */
+    fun awaitNextWake() {
+        if (awaitJob?.isActive == true) return
+        if (scanningInternal.value) return
+        if (connectJob?.isActive == true) return
+        if (linkPhaseInternal.value == LinkPhase.Ready) return
+        if (environment.missingPermissions().isNotEmpty()) {
+            awaitWakeInternal.value = AwaitWakeState.Failed(CompanionError.PermissionsMissing)
+            return
+        }
+        if (!environment.isBluetoothEnabled) {
+            awaitWakeInternal.value = AwaitWakeState.Failed(CompanionError.BluetoothOff)
+            return
+        }
+        val identity = identityInternal.value
+        if (identity == null || !transport.isBonded(identity.address)) {
+            awaitWakeInternal.value = AwaitWakeState.Failed(CompanionError.NotPaired)
+            return
+        }
+        awaitWakeInternal.value = AwaitWakeState.Waiting
+        awaitJob = scope.launch {
+            try {
+                val match = withTimeoutOrNull(AWAKE_WINDOW_MS) {
+                    val found = CompletableDeferred<ScannedDevice>()
+                    val window = launch {
+                        scanner.scanResults().collect { result ->
+                            if (result.address == identity.address && !found.isCompleted) {
+                                found.complete(result)
+                            }
+                        }
+                    }
+                    try {
+                        found.await()
+                    } finally {
+                        // The scan is fully stopped (the scanner's own
+                        // cleanup has run) before any GATT work begins.
+                        window.cancelAndJoin()
+                    }
+                }
+                if (match == null) {
+                    awaitWakeInternal.value = AwaitWakeState.TimedOut
+                    return@launch
+                }
+                // The bond may have been dropped while the window was open.
+                if (!transport.isBonded(identity.address)) {
+                    awaitWakeInternal.value = AwaitWakeState.Failed(CompanionError.NotPaired)
+                    return@launch
+                }
+                awaitInitiatedSession = true
+                launchSession(match.address, match.name ?: identity.name)
+                val session = connectJob
+                if (session == null) {
+                    awaitWakeInternal.value = AwaitWakeState.Failed(CompanionError.NotPaired)
+                    return@launch
+                }
+                // The session job completes on every terminal outcome: a
+                // failure settles the phase and finishes, and a success keeps
+                // the link alive with the phase left at Ready.
+                session.join()
+                awaitInitiatedSession = false
+                awaitWakeInternal.value = when (val phase = linkPhaseInternal.value) {
+                    LinkPhase.Ready -> AwaitWakeState.Connected
+                    is LinkPhase.Failed -> AwaitWakeState.Failed(phase.error)
+                    else -> AwaitWakeState.Idle
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (scanError: Exception) {
+                awaitWakeInternal.value = AwaitWakeState.Failed(CompanionError.ScanFailed)
+            }
+        }
+    }
+
+    /** Cancels the diagnostic wait, aborting any session attempt it started. */
+    fun cancelAwaitWake() {
+        awaitJob?.cancel()
+        awaitJob = null
+        if (awaitInitiatedSession) {
+            awaitInitiatedSession = false
+            disconnect()
+        }
+        awaitWakeInternal.value = AwaitWakeState.Idle
+    }
+
     // --- Connection lifecycle ---
 
     /**
      * Connects to the reader at [address], bonding first when needed. A
      * connection attempt must be user-initiated; the call is ignored while an
-     * attempt or session is already running.
+     * attempt or session is already running, and while the await-wake
+     * diagnostic owns the radio (cancel the wait first).
      */
     fun connect(address: String, name: String?) {
         if (connectJob?.isActive == true) return
         if (linkPhaseInternal.value == LinkPhase.Ready) return
+        if (awaitJob?.isActive == true) return
+        launchSession(address, name)
+    }
+
+    /** Opens exactly one session attempt; the caller has applied its guards. */
+    private fun launchSession(address: String, name: String?) {
         if (environment.missingPermissions().isNotEmpty()) {
             linkPhaseInternal.value = LinkPhase.Failed(CompanionError.PermissionsMissing)
             return
@@ -229,6 +357,10 @@ class CompanionConnectionManager(
 
     /** User-initiated disconnect; the remembered device stays paired. */
     fun disconnect() {
+        awaitJob?.cancel()
+        awaitJob = null
+        awaitInitiatedSession = false
+        awaitWakeInternal.value = AwaitWakeState.Idle
         userDisconnect = true
         connectJob?.cancel()
         connectJob = null
@@ -244,6 +376,10 @@ class CompanionConnectionManager(
      * the pairing reset stays manual per the protocol contract.
      */
     suspend fun forgetDevice(): Boolean {
+        awaitJob?.cancel()
+        awaitJob = null
+        awaitInitiatedSession = false
+        awaitWakeInternal.value = AwaitWakeState.Idle
         userDisconnect = true
         connectJob?.cancel()
         connectJob = null
@@ -507,6 +643,9 @@ class CompanionConnectionManager(
 
     private companion object {
         const val SCAN_WINDOW_MS = 12_000L
+
+        /** Bounded window of the await-wake diagnostic: at most 60 seconds. */
+        const val AWAKE_WINDOW_MS = 60_000L
         const val STEP_TIMEOUT_MS = 10_000L
         const val HANDSHAKE_TIMEOUT_MS = 10_000L
         const val SEND_TIMEOUT_MS = 10_000L

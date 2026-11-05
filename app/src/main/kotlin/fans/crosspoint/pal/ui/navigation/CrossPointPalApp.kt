@@ -135,6 +135,8 @@ private fun PalNavHost(
                 onDeviceSelected = viewModel::onDeviceSelected,
                 onCancelScan = viewModel::cancelScan,
                 onReconnectPressed = viewModel::onReconnectPressed,
+                onAwaitWakePressed = viewModel::onAwaitWakePressed,
+                onCancelAwaitWake = viewModel::cancelAwaitWake,
                 onDisconnectPressed = viewModel::onDisconnectPressed,
                 onPermissionsResult = viewModel::onPermissionsResult,
             )

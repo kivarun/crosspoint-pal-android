@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fans.crosspoint.pal.R
+import fans.crosspoint.pal.ble.AwaitWakeState
 import fans.crosspoint.pal.ble.CompanionError
 import fans.crosspoint.pal.ble.LinkPhase
 import fans.crosspoint.pal.ble.ScannedDevice
@@ -53,6 +54,8 @@ fun HomeScreen(
     onDeviceSelected: (ScannedDevice) -> Unit,
     onCancelScan: () -> Unit,
     onReconnectPressed: () -> Unit,
+    onAwaitWakePressed: () -> Unit,
+    onCancelAwaitWake: () -> Unit,
     onDisconnectPressed: () -> Unit,
     onPermissionsResult: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -84,8 +87,16 @@ fun HomeScreen(
             state = state,
             onConnectPressed = onConnectPressed,
             onReconnectPressed = onReconnectPressed,
+            onAwaitWakePressed = onAwaitWakePressed,
             onDisconnectPressed = onDisconnectPressed,
         )
+
+        if (state.awaitWake != AwaitWakeState.Idle) {
+            AwaitWakeCard(
+                state = state.awaitWake,
+                onCancel = onCancelAwaitWake,
+            )
+        }
 
         if (state.isScanning) {
             ScanCard(
@@ -119,6 +130,7 @@ private fun DeviceCard(
     state: HomeUiState,
     onConnectPressed: () -> Unit,
     onReconnectPressed: () -> Unit,
+    onAwaitWakePressed: () -> Unit,
     onDisconnectPressed: () -> Unit,
 ) {
     val device = state.device
@@ -189,6 +201,21 @@ private fun DeviceCard(
                     ) {
                         Text(stringResource(R.string.home_action_reconnect))
                     }
+                    // The bounded diagnostic wait only makes sense for a
+                    // paired, currently unconnected reader; the session, the
+                    // manual scan, and a running wait exclude it.
+                    if (device.paired && !state.isScanning &&
+                        state.awaitWake == AwaitWakeState.Idle
+                    ) {
+                        OutlinedButton(
+                            onClick = onAwaitWakePressed,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = Spacing.s),
+                        ) {
+                            Text(stringResource(R.string.home_action_await_wake))
+                        }
+                    }
                 }
             }
 
@@ -218,6 +245,64 @@ private fun DeviceCard(
                     color = MaterialTheme.palStatusColors.destructive,
                     modifier = Modifier.padding(top = Spacing.m),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AwaitWakeCard(
+    state: AwaitWakeState,
+    onCancel: () -> Unit,
+) {
+    val errorMessage = rememberCompanionErrorMessages()
+    PalCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(Spacing.l)) {
+            when (state) {
+                AwaitWakeState.Idle -> Unit
+                AwaitWakeState.Waiting -> {
+                    Text(
+                        text = stringResource(R.string.home_await_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stringResource(R.string.home_await_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = Spacing.s),
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = Spacing.m),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.m),
+                    ) {
+                        LinearProgressIndicator(modifier = Modifier.weight(1f))
+                        TextButton(onClick = onCancel) {
+                            Text(stringResource(R.string.home_action_cancel))
+                        }
+                    }
+                }
+                AwaitWakeState.TimedOut ->
+                    Text(
+                        text = stringResource(R.string.home_await_timed_out),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                AwaitWakeState.Connected ->
+                    Text(
+                        text = stringResource(R.string.home_await_connected),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                is AwaitWakeState.Failed ->
+                    Text(
+                        text = errorMessage(state.error),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.palStatusColors.destructive,
+                    )
             }
         }
     }
@@ -407,6 +492,8 @@ private fun HomeScreenPreviewConnected() {
             onDeviceSelected = {},
             onCancelScan = {},
             onReconnectPressed = {},
+            onAwaitWakePressed = {},
+            onCancelAwaitWake = {},
             onDisconnectPressed = {},
             onPermissionsResult = {},
         )
@@ -432,6 +519,8 @@ private fun HomeScreenPreviewNoDevice() {
             onDeviceSelected = {},
             onCancelScan = {},
             onReconnectPressed = {},
+            onAwaitWakePressed = {},
+            onCancelAwaitWake = {},
             onDisconnectPressed = {},
             onPermissionsResult = {},
         )
@@ -457,6 +546,8 @@ private fun HomeScreenPreviewScanning() {
             onDeviceSelected = {},
             onCancelScan = {},
             onReconnectPressed = {},
+            onAwaitWakePressed = {},
+            onCancelAwaitWake = {},
             onDisconnectPressed = {},
             onPermissionsResult = {},
         )

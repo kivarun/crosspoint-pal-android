@@ -7,6 +7,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -69,7 +71,21 @@ class FakeBleEnvironment(
 
 class FakeScanner : CompanionScanner {
     private val flow = MutableSharedFlow<ScannedDevice>(extraBufferCapacity = 16)
+
+    /** How many times a scan window was opened: detects retry/scan loops. */
+    var scanStarts = 0
+        private set
+
+    /** How many scan windows are currently collecting. */
+    var activeScans = 0
+        private set
+
     override fun scanResults(): Flow<ScannedDevice> = flow
+        .onStart {
+            scanStarts++
+            activeScans++
+        }
+        .onCompletion { activeScans-- }
 
     fun emit(device: ScannedDevice) {
         flow.tryEmit(device)

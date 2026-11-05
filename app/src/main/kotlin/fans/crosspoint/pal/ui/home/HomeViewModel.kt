@@ -2,6 +2,7 @@ package fans.crosspoint.pal.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import fans.crosspoint.pal.ble.AwaitWakeState
 import fans.crosspoint.pal.ble.CompanionConnectionManager
 import fans.crosspoint.pal.ble.CompanionError
 import fans.crosspoint.pal.ble.LinkPhase
@@ -27,6 +28,7 @@ data class HomeUiState(
     val isScanning: Boolean,
     val scannedDevices: List<ScannedDevice>,
     val needsPermissions: Boolean,
+    val awaitWake: AwaitWakeState = AwaitWakeState.Idle,
 ) {
     val hasDevice: Boolean
         get() = device != null
@@ -55,6 +57,11 @@ class HomeViewModel(private val connectionManager: CompanionConnectionManager) :
 
     private val permissionsRequested = MutableStateFlow(false)
 
+    /** Which BLE action the pending permission dialog should resume. */
+    private enum class PendingAction { Scan, AwaitWake }
+
+    private var pendingAction: PendingAction? = null
+
     private val _events = Channel<HomeUiEvent>(capacity = Channel.BUFFERED)
     val events = _events.receiveAsFlow()
 
@@ -65,6 +72,7 @@ class HomeViewModel(private val connectionManager: CompanionConnectionManager) :
         isScanning = connectionManager.isScanning.value,
         scannedDevices = connectionManager.scannedDevices.value,
         needsPermissions = false,
+        awaitWake = connectionManager.awaitWake.value,
     )
 
     val uiState: StateFlow<HomeUiState> = combine(
@@ -73,6 +81,7 @@ class HomeViewModel(private val connectionManager: CompanionConnectionManager) :
         connectionManager.linkPhase,
         connectionManager.isScanning,
         connectionManager.scannedDevices,
+        connectionManager.awaitWake,
         permissionsRequested,
     ) { values ->
         @Suppress("UNCHECKED_CAST")
@@ -82,7 +91,8 @@ class HomeViewModel(private val connectionManager: CompanionConnectionManager) :
             phase = values[2] as LinkPhase,
             isScanning = values[3] as Boolean,
             scannedDevices = values[4] as List<ScannedDevice>,
-            needsPermissions = values[5] as Boolean,
+            awaitWake = values[5] as AwaitWakeState,
+            needsPermissions = values[6] as Boolean,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -103,25 +113,48 @@ class HomeViewModel(private val connectionManager: CompanionConnectionManager) :
     /** Connect pressed: request permissions first, then open the scan. */
     fun onConnectPressed() {
         if (connectionManager.missingPermissions().isNotEmpty()) {
+            pendingAction = PendingAction.Scan
             permissionsRequested.update { true }
             return
         }
         connectionManager.startScan()
     }
 
+    /** Await-next-wake pressed: request permissions first, then wait. */
+    fun onAwaitWakePressed() {
+        if (connectionManager.missingPermissions().isNotEmpty()) {
+            pendingAction = PendingAction.AwaitWake
+            permissionsRequested.update { true }
+            return
+        }
+        connectionManager.awaitNextWake()
+    }
+
     /** Result of the runtime permission dialog. */
     fun onPermissionsResult(allGranted: Boolean) {
         permissionsRequested.value = false
-        if (allGranted) {
-            connectionManager.startScan()
-        } else {
+        val action = pendingAction
+        pendingAction = null
+        if (!allGranted) {
             _events.trySend(HomeUiEvent.Error(CompanionError.PermissionsMissing))
+            return
+        }
+        when (action) {
+            PendingAction.Scan -> connectionManager.startScan()
+            PendingAction.AwaitWake -> connectionManager.awaitNextWake()
+            null -> Unit
         }
     }
 
     fun cancelScan() {
         permissionsRequested.value = false
         connectionManager.stopScan()
+    }
+
+    /** Cancel pressed on the diagnostic wait. */
+    fun cancelAwaitWake() {
+        permissionsRequested.value = false
+        connectionManager.cancelAwaitWake()
     }
 
     /** The user picked a device from the scan results. */

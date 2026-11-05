@@ -61,6 +61,8 @@ class HomeScreenReconnectTest {
                     onDeviceSelected = {},
                     onCancelScan = {},
                     onReconnectPressed = { reconnectPressed++ },
+                    onAwaitWakePressed = {},
+                    onCancelAwaitWake = {},
                     onDisconnectPressed = {},
                     onPermissionsResult = {},
                 )

@@ -23,11 +23,16 @@
     <string name="home_no_device_body">Pair your CrossPoint Pal device to start sending content to its e-ink display.</string>
     <string name="home_action_connect">Connect device</string>
     <string name="home_action_reconnect">Reconnect</string>
+    <string name="home_action_await_wake">Await next wake</string>
     <string name="home_action_disconnect">Disconnect</string>
     <string name="home_action_cancel">Cancel</string>
     <string name="home_scanning_title">Scanning…</string>
     <string name="home_scanning_hint">Make sure the reader is in Settings → Network → Phone Companion, then tap your device below.</string>
     <string name="home_scan_unnamed_device">Unnamed device</string>
+    <string name="home_await_title">Awaiting wake…</string>
+    <string name="home_await_hint">Waiting up to 60 seconds for your paired reader to wake and advertise. It connects automatically — no selection needed.</string>
+    <string name="home_await_timed_out">No wake detected within 60 seconds.</string>
+    <string name="home_await_connected">The reader woke up and the session is ready.</string>
     <string name="home_phase_bonding">Pairing…</string>
     <string name="home_phase_connecting">Connecting…</string>
     <string name="home_phase_negotiating">Negotiating MTU…</string>
@@ -44,6 +49,7 @@
     <string name="error_insufficient_mtu">The negotiated MTU (%1$s) is too small for the companion protocol.</string>
     <string name="error_incompatible_gatt">The device\'s GATT layout does not match the companion protocol.</string>
     <string name="error_incompatible_version">The device runs an incompatible companion protocol version.</string>
+    <string name="error_not_paired">No paired Pal is available to wait for.</string>
     <string name="error_setup_timeout">Setting up the connection timed out.</string>
     <string name="error_send_rejected">The device rejected the content (%1$s).</string>
     <string name="error_send_timeout">Sending timed out. The device did not acknowledge the content.</string>

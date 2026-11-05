@@ -25,6 +25,7 @@ fun rememberCompanionErrorMessages(): (CompanionError) -> String {
     val insufficientMtuPattern = stringResource(R.string.error_insufficient_mtu, STRING_PLACEHOLDER)
     val incompatibleGatt = stringResource(R.string.error_incompatible_gatt)
     val incompatibleVersion = stringResource(R.string.error_incompatible_version)
+    val notPaired = stringResource(R.string.error_not_paired)
     val setupTimeout = stringResource(R.string.error_setup_timeout)
     val sendRejectedPattern = stringResource(R.string.error_send_rejected, STRING_PLACEHOLDER)
     val sendTimeout = stringResource(R.string.error_send_timeout)
@@ -32,7 +33,7 @@ fun rememberCompanionErrorMessages(): (CompanionError) -> String {
     val linkLost = stringResource(R.string.error_link_lost)
     return remember(
         bluetoothOff, permissionsMissing, scanFailed, pairingFailed, connectionFailedPattern,
-        insufficientMtuPattern, incompatibleGatt, incompatibleVersion, setupTimeout,
+        insufficientMtuPattern, incompatibleGatt, incompatibleVersion, notPaired, setupTimeout,
         sendRejectedPattern, sendTimeout, protocolViolation, linkLost,
     ) {
         { error: CompanionError ->
@@ -47,6 +48,7 @@ fun rememberCompanionErrorMessages(): (CompanionError) -> String {
                 formatPattern(insufficientMtuPattern, error.negotiated.toString())
             CompanionError.IncompatibleGatt -> incompatibleGatt
             CompanionError.IncompatibleVersion -> incompatibleVersion
+            CompanionError.NotPaired -> notPaired
             is CompanionError.SetupTimeout -> setupTimeout
             is CompanionError.SendRejected ->
                 formatPattern(sendRejectedPattern, error.code)
