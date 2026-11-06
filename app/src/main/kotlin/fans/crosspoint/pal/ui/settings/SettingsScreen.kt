@@ -40,7 +40,8 @@ import fans.crosspoint.pal.ui.theme.Spacing
 
 /**
  * Settings screen: theme preference, connection and pairing summaries,
- * privacy pointer, about, and the destructive forget-device action.
+ * privacy pointer, diagnostic export, about, and the destructive forget
+ * device action.
  */
 @Composable
 fun SettingsScreen(
@@ -51,6 +52,7 @@ fun SettingsScreen(
     onForgetConfirmed: () -> Unit,
     onForgetDismissed: () -> Unit,
     onOpenNotifications: () -> Unit,
+    onExportDiagnosticsRequested: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var themeDialogVisible by rememberSaveable { mutableStateOf(false) }
@@ -115,6 +117,15 @@ fun SettingsScreen(
             )
         }
 
+        SectionHeader(text = stringResource(R.string.settings_diagnostics_section))
+        PalCard(modifier = Modifier.fillMaxWidth()) {
+            SettingsRow(
+                title = stringResource(R.string.settings_diagnostics_label),
+                value = stringResource(R.string.settings_diagnostics_hint),
+                onClick = onExportDiagnosticsRequested,
+            )
+        }
+
         SectionHeader(text = stringResource(R.string.settings_about_section))
         PalCard(modifier = Modifier.fillMaxWidth()) {
             SettingsRow(
@@ -165,14 +176,30 @@ fun SettingsEventsEffect(
     events: kotlinx.coroutines.flow.Flow<SettingsUiEvent>,
     onForgetCompleted: (String) -> Unit,
     onForgetNeedsSystemSettings: (String) -> Unit,
+    onExportReady: (android.net.Uri) -> Unit,
+    onExportFailed: (String) -> Unit,
 ) {
     val completedMessage = stringResource(R.string.settings_forget_completed)
     val bondFailedMessage = stringResource(R.string.settings_forget_bond_failed)
+    val exportFailedMessage = stringResource(R.string.settings_diagnostics_export_failed)
+    val shareTitle = stringResource(R.string.settings_diagnostics_share_title)
+    val context = LocalContext.current
     LaunchedEffect(events) {
         events.collect { event ->
             when (event) {
                 SettingsUiEvent.ForgetCompleted -> onForgetCompleted(completedMessage)
                 SettingsUiEvent.ForgetNeedsSystemSettings -> onForgetNeedsSystemSettings(bondFailedMessage)
+                is SettingsUiEvent.ExportReady -> {
+                    val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_STREAM, event.uri)
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    val chooser = android.content.Intent.createChooser(share, shareTitle)
+                    runCatching { context.startActivity(chooser) }
+                    onExportReady(event.uri)
+                }
+                SettingsUiEvent.ExportFailed -> onExportFailed(exportFailedMessage)
             }
         }
     }
@@ -319,6 +346,7 @@ private fun SettingsScreenPreview() {
             onForgetConfirmed = {},
             onForgetDismissed = {},
             onOpenNotifications = {},
+            onExportDiagnosticsRequested = {},
         )
     }
 }

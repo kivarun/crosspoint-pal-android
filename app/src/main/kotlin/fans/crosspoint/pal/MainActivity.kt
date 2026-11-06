@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val container = (application as CrossPointPalApplication).container
+        container.diagnostics.recordAppLifecycle(foreground = true)
 
         setContent {
             val themeMode by container.themeModeStore.themeMode
@@ -46,5 +47,15 @@ class MainActivity : ComponentActivity() {
                 CrossPointPalApp(container = container)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        (application as CrossPointPalApplication).container.diagnostics.recordAppLifecycle(foreground = true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        (application as CrossPointPalApplication).container.diagnostics.recordAppLifecycle(foreground = false)
     }
 }

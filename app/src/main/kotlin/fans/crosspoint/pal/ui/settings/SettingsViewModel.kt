@@ -2,7 +2,9 @@ package fans.crosspoint.pal.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.net.Uri
 import fans.crosspoint.pal.ble.CompanionConnectionManager
+import fans.crosspoint.pal.ble.DiagnosticExporter
 import fans.crosspoint.pal.ble.LinkPhase
 import fans.crosspoint.pal.data.ThemeModeStore
 import fans.crosspoint.pal.domain.ThemeMode
@@ -34,11 +36,18 @@ sealed interface SettingsUiEvent {
 
     /** The system bond could not be removed automatically. */
     data object ForgetNeedsSystemSettings : SettingsUiEvent
+
+    /** The diagnostic export is ready to share. */
+    data class ExportReady(val uri: Uri) : SettingsUiEvent
+
+    /** The diagnostic export could not be written. */
+    data object ExportFailed : SettingsUiEvent
 }
 
 class SettingsViewModel(
     private val themeModeStore: ThemeModeStore,
     private val connectionManager: CompanionConnectionManager,
+    private val diagnosticExporter: DiagnosticExporter,
 ) : ViewModel() {
 
     private val forgetDialogVisible = MutableStateFlow(false)
@@ -100,5 +109,14 @@ class SettingsViewModel(
 
     fun onForgetDismissed() {
         forgetDialogVisible.update { false }
+    }
+
+    /** Renders the bounded BLE session trace and hands it to the share sheet. */
+    fun onExportDiagnosticsRequested() {
+        viewModelScope.launch {
+            runCatching { diagnosticExporter.export() }
+                .onSuccess { uri -> _events.send(SettingsUiEvent.ExportReady(uri)) }
+                .onFailure { _events.send(SettingsUiEvent.ExportFailed) }
+        }
     }
 }

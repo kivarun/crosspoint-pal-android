@@ -41,6 +41,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Diagnostic trace export: shares an app-private cache file through
+             the system share sheet without any runtime permission. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="fans.crosspoint.pal.diagnostics"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

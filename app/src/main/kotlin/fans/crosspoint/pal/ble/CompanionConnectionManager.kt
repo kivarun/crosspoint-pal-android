@@ -56,6 +56,8 @@ class CompanionConnectionManager(
     private val identityStore: CompanionIdentityStore,
     private val scanner: CompanionScanner,
     private val zone: ZoneId = ZoneId.systemDefault(),
+    private val diagnostics: SessionDiagnosticTrace =
+        SessionDiagnosticTrace(NoopDiagnosticTraceStore, monotonicMs = { 0L }),
 ) {
 
     private val identityInternal = MutableStateFlow<CompanionIdentity?>(null)
@@ -101,6 +103,12 @@ class CompanionConnectionManager(
     @Volatile
     private var userDisconnect = false
 
+    // Identity of the running connection attempt; diagnostics events carry it
+    // so callbacks from obsolete GATT links are never attributed to the
+    // active session.
+    @Volatile
+    private var currentAttemptId: String? = null
+
     @Volatile
     private var responseWaiter: CompletableDeferred<DeviceMessage>? = null
 
@@ -124,6 +132,11 @@ class CompanionConnectionManager(
                 val identity = identityInternal.value
                 if (identity != null && identity.address == address) {
                     pairedInternal.value = transport.isBonded(address)
+                    // Bond state change; the address itself is never recorded.
+                    diagnostics.record(
+                        SessionDiagnosticTrace.EVENT_BOND_STATE,
+                        detail = "bonded",
+                    )
                 }
             }
             .launchIn(scope)
@@ -262,7 +275,7 @@ class CompanionConnectionManager(
                     return@launch
                 }
                 awaitInitiatedSession = true
-                launchSession(match.address, match.name ?: identity.name)
+                launchSession(match.address, match.name ?: identity.name, SessionDiagnosticTrace.EVENT_AWAIT_WAKE_CONNECT)
                 val session = connectJob
                 if (session == null) {
                     awaitWakeInternal.value = AwaitWakeState.Failed(CompanionError.NotPaired)
@@ -309,33 +322,58 @@ class CompanionConnectionManager(
         if (connectJob?.isActive == true) return
         if (linkPhaseInternal.value == LinkPhase.Ready) return
         if (awaitJob?.isActive == true) return
-        launchSession(address, name)
+        launchSession(address, name, SessionDiagnosticTrace.EVENT_CONNECT_REQUEST)
     }
 
     /** Opens exactly one session attempt; the caller has applied its guards. */
-    private fun launchSession(address: String, name: String?) {
+    private fun launchSession(address: String, name: String?, requestKind: String) {
         if (environment.missingPermissions().isNotEmpty()) {
+            diagnostics.record(
+                SessionDiagnosticTrace.EVENT_CONNECT_REFUSED,
+                detail = SessionDiagnosticTrace.diagnosticLabel(CompanionError.PermissionsMissing),
+            )
             linkPhaseInternal.value = LinkPhase.Failed(CompanionError.PermissionsMissing)
             return
         }
         if (!environment.isBluetoothEnabled) {
+            diagnostics.record(
+                SessionDiagnosticTrace.EVENT_CONNECT_REFUSED,
+                detail = SessionDiagnosticTrace.diagnosticLabel(CompanionError.BluetoothOff),
+            )
             linkPhaseInternal.value = LinkPhase.Failed(CompanionError.BluetoothOff)
             return
         }
         userDisconnect = false
+        val attemptId = diagnostics.newAttemptId()
+        currentAttemptId = attemptId
+        diagnostics.record(requestKind, attempt = attemptId)
         connectJob = scope.launch {
             try {
-                runSession(address, name)
+                runSession(address, name, attemptId)
             } catch (failure: CompanionFailure) {
+                recordFailure(failure.error, attemptId)
                 settle(failure.error)
                 cleanupSession()
             } catch (lost: LinkLostException) {
+                diagnostics.record(
+                    SessionDiagnosticTrace.EVENT_FAILURE,
+                    attempt = attemptId,
+                    phase = currentPhaseLabel(),
+                    detail = SessionDiagnosticTrace.diagnosticLabel(CompanionError.LinkLost),
+                )
                 settle(CompanionError.LinkLost)
                 cleanupSession()
             } catch (operation: GattOperationException) {
+                diagnostics.record(
+                    SessionDiagnosticTrace.EVENT_GATT_STATUS_FAILED,
+                    attempt = attemptId,
+                    phase = currentPhaseLabel(),
+                    gattStatus = operation.gattStatus,
+                )
                 settle(CompanionError.ConnectionFailed(operation.gattStatus))
                 cleanupSession()
             } catch (incompatible: IncompatibleGattException) {
+                recordFailure(CompanionError.IncompatibleGatt, attemptId)
                 settle(CompanionError.IncompatibleGatt)
                 cleanupSession()
             } catch (cancelled: CancellationException) {
@@ -352,7 +390,10 @@ class CompanionConnectionManager(
     /** Reconnects to the remembered companion device. */
     fun reconnect() {
         val identity = identityInternal.value ?: return
-        connect(identity.address, identity.name)
+        if (connectJob?.isActive == true) return
+        if (linkPhaseInternal.value == LinkPhase.Ready) return
+        if (awaitJob?.isActive == true) return
+        launchSession(identity.address, identity.name, SessionDiagnosticTrace.EVENT_RECONNECT_REQUEST)
     }
 
     /** User-initiated disconnect; the remembered device stays paired. */
@@ -361,6 +402,11 @@ class CompanionConnectionManager(
         awaitJob = null
         awaitInitiatedSession = false
         awaitWakeInternal.value = AwaitWakeState.Idle
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_DISCONNECT_REQUEST,
+            attempt = currentAttemptId,
+            phase = currentPhaseLabel(),
+        )
         userDisconnect = true
         connectJob?.cancel()
         connectJob = null
@@ -380,6 +426,7 @@ class CompanionConnectionManager(
         awaitJob = null
         awaitInitiatedSession = false
         awaitWakeInternal.value = AwaitWakeState.Idle
+        diagnostics.record(SessionDiagnosticTrace.EVENT_FORGET_REQUEST, attempt = currentAttemptId)
         userDisconnect = true
         connectJob?.cancel()
         connectJob = null
@@ -406,6 +453,12 @@ class CompanionConnectionManager(
             ?.takeIf { linkPhaseInternal.value == LinkPhase.Ready }
             ?: return SendResult.NotReady
         return sendMutex.withLock {
+            val attemptId = currentAttemptId
+            diagnostics.record(
+                SessionDiagnosticTrace.EVENT_CONTENT_SEND_STARTED,
+                attempt = attemptId,
+                phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+            )
             val contentId = nextContentId()
             val payload = CompanionCodec.content(title = title, body = body, contentId = contentId)
             val waiter = CompletableDeferred<DeviceMessage>()
@@ -416,8 +469,18 @@ class CompanionConnectionManager(
                     when (val message = waiter.await()) {
                         is DeviceMessage.ContentAck ->
                             if (message.contentId == contentId) {
+                                diagnostics.record(
+                                    SessionDiagnosticTrace.EVENT_CONTENT_ACK_OK,
+                                    attempt = attemptId,
+                                    phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+                                )
                                 SendResult.Sent
                             } else {
+                                diagnostics.record(
+                                    SessionDiagnosticTrace.EVENT_CONTENT_ACK_MISMATCH,
+                                    attempt = attemptId,
+                                    phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+                                )
                                 terminateSession(
                                     CompanionError.ProtocolViolation("content_ack contentId mismatch"),
                                 )
@@ -430,17 +493,48 @@ class CompanionConnectionManager(
                                 message.code == CompanionProtocol.ERROR_HELLO_FIRST
                             ) {
                                 // The session stays alive on these errors.
+                                diagnostics.record(
+                                    SessionDiagnosticTrace.EVENT_CONTENT_SEND_FAILED,
+                                    attempt = attemptId,
+                                    phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+                                    detail = SessionDiagnosticTrace.diagnosticLabel(
+                                        CompanionError.SendRejected(message.code, message.message),
+                                    ),
+                                )
                                 SendResult.Failed(
                                     CompanionError.SendRejected(message.code, message.message),
                                 )
                             } else {
+                                diagnostics.record(
+                                    SessionDiagnosticTrace.EVENT_CONTENT_SEND_FAILED,
+                                    attempt = attemptId,
+                                    phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+                                    detail = "protocol_violation",
+                                )
                                 val error =
                                     CompanionError.ProtocolViolation("unexpected error ${message.code}")
                                 terminateSession(error)
                                 SendResult.Failed(error)
                             }
-                        is DeviceMessageLinkClosed -> SendResult.Failed(CompanionError.LinkLost)
+                        is DeviceMessageLinkClosed -> {
+                            // The close callback may already have settled the
+                            // phase; a content send only ever happens while
+                            // Ready, so the diagnostic records that stage.
+                            diagnostics.record(
+                                SessionDiagnosticTrace.EVENT_CONTENT_SEND_FAILED,
+                                attempt = attemptId,
+                                phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+                                detail = SessionDiagnosticTrace.diagnosticLabel(CompanionError.LinkLost),
+                            )
+                            SendResult.Failed(CompanionError.LinkLost)
+                        }
                         else -> {
+                            diagnostics.record(
+                                SessionDiagnosticTrace.EVENT_CONTENT_SEND_FAILED,
+                                attempt = attemptId,
+                                phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+                                detail = "protocol_violation",
+                            )
                             val error =
                                 CompanionError.ProtocolViolation("unexpected ${message::class.simpleName}")
                             terminateSession(error)
@@ -450,10 +544,27 @@ class CompanionConnectionManager(
                 }
             } catch (timeout: TimeoutCancellationException) {
                 if (!currentCoroutineContext().isActive) throw timeout
+                diagnostics.record(
+                    SessionDiagnosticTrace.EVENT_CONTENT_SEND_TIMEOUT,
+                    attempt = attemptId,
+                    phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+                )
                 SendResult.Failed(CompanionError.SendTimeout)
             } catch (lost: LinkLostException) {
+                diagnostics.record(
+                    SessionDiagnosticTrace.EVENT_CONTENT_SEND_FAILED,
+                    attempt = attemptId,
+                    phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+                    detail = SessionDiagnosticTrace.diagnosticLabel(CompanionError.LinkLost),
+                )
                 SendResult.Failed(CompanionError.LinkLost)
             } catch (operation: GattOperationException) {
+                diagnostics.record(
+                    SessionDiagnosticTrace.EVENT_GATT_STATUS_FAILED,
+                    attempt = attemptId,
+                    phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+                    gattStatus = operation.gattStatus,
+                )
                 SendResult.Failed(CompanionError.ConnectionFailed(operation.gattStatus))
             } finally {
                 responseWaiter = null
@@ -463,7 +574,7 @@ class CompanionConnectionManager(
 
     // --- Session internals ---
 
-    private suspend fun runSession(address: String, scannedName: String?) {
+    private suspend fun runSession(address: String, scannedName: String?, attemptId: String) {
         closeLink() // never two live GATT lifecycles
         val identityName = identityInternal.value
             ?.takeIf { it.address == address }
@@ -471,44 +582,94 @@ class CompanionConnectionManager(
         val deviceName = scannedName ?: identityName
 
         linkPhaseInternal.value = LinkPhase.Bonding
-        if (!transport.ensureBonded(address)) throw CompanionFailure(CompanionError.PairingFailed)
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_BOND_STARTED,
+            attempt = attemptId,
+            phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Bonding),
+        )
+        if (!transport.ensureBonded(address)) {
+            // Authentication/pairing failure: recorded as an explicit event.
+            throw CompanionFailure(CompanionError.PairingFailed)
+        }
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_BOND_OK,
+            attempt = attemptId,
+            phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Bonding),
+        )
         // The bond is the pairing event: the identity becomes durable here.
         identityStore.setIdentity(CompanionIdentity(address = address, name = deviceName))
         pairedInternal.value = transport.isBonded(address)
 
         linkPhaseInternal.value = LinkPhase.Connecting
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_GATT_CONNECT,
+            attempt = attemptId,
+            phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Connecting),
+        )
         val sessionLink = within(LinkPhase.Connecting, STEP_TIMEOUT_MS) { transport.connect(address) }
         link.set(sessionLink)
         // The link identity travels with both callbacks: a late callback from
         // a superseded link must never disturb the live session.
         sessionLink.onNotification = { bytes -> onNotification(sessionLink, bytes) }
         sessionLink.onClosed = { onLinkClosed(sessionLink) }
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_GATT_CONNECTED,
+            attempt = attemptId,
+            phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Connecting),
+        )
 
         linkPhaseInternal.value = LinkPhase.NegotiatingMtu
         val mtu = within(LinkPhase.NegotiatingMtu, STEP_TIMEOUT_MS) {
             sessionLink.requestMtu(CompanionProtocol.REQUESTED_MTU)
         }
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_MTU_NEGOTIATED,
+            attempt = attemptId,
+            phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.NegotiatingMtu),
+            detail = mtu.toString(),
+        )
         if (mtu < CompanionProtocol.MIN_USABLE_MTU) {
             throw CompanionFailure(CompanionError.InsufficientMtu(mtu))
         }
 
         linkPhaseInternal.value = LinkPhase.Discovering
         val characteristics = within(LinkPhase.Discovering, STEP_TIMEOUT_MS) { sessionLink.discoverServices() }
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_SERVICES_DISCOVERED,
+            attempt = attemptId,
+            phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Discovering),
+        )
 
         linkPhaseInternal.value = LinkPhase.Subscribing
         within(LinkPhase.Subscribing, STEP_TIMEOUT_MS) {
             sessionLink.subscribeEvent(characteristics.eventUuid)
         }
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_CCCD_DONE,
+            attempt = attemptId,
+            phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Subscribing),
+        )
 
         linkPhaseInternal.value = LinkPhase.Handshaking
         val helloWaiter = CompletableDeferred<DeviceMessage>()
         responseWaiter = helloWaiter
         sessionLink.writeControl(UUID.fromString(CompanionProtocol.CONTROL_UUID), CompanionCodec.hello())
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_HELLO_SENT,
+            attempt = attemptId,
+            phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Handshaking),
+        )
         when (val message = within(LinkPhase.Handshaking, HANDSHAKE_TIMEOUT_MS) { helloWaiter.await() }) {
-            is DeviceMessage.HelloAck ->
+            is DeviceMessage.HelloAck -> {
                 if (message.version != CompanionProtocol.VERSION) {
                     throw CompanionFailure(CompanionError.IncompatibleVersion)
                 }
+                diagnostics.record(
+                    SessionDiagnosticTrace.EVENT_HELLO_ACK,
+                    attempt = attemptId,
+                    phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Handshaking),
+                )
+            }
             is DeviceMessage.Error ->
                 throw CompanionFailure(
                     if (message.code == CompanionProtocol.ERROR_VERSION) {
@@ -525,6 +686,11 @@ class CompanionConnectionManager(
 
         lastConnectedAtInternal.value = clockMillis()
         linkPhaseInternal.value = LinkPhase.Ready
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_READY,
+            attempt = attemptId,
+            phase = SessionDiagnosticTrace.phaseLabel(LinkPhase.Ready),
+        )
     }
 
     private fun onNotification(source: GattLink, bytes: ByteArray) {
@@ -572,12 +738,23 @@ class CompanionConnectionManager(
         responseWaiter?.complete(DeviceMessageLinkClosed)
         responseWaiter = null
         if (!userDisconnect && linkPhaseInternal.value != LinkPhase.Idle) {
+            diagnostics.record(
+                SessionDiagnosticTrace.EVENT_LINK_CLOSED_UNEXPECTED,
+                attempt = currentAttemptId,
+                phase = currentPhaseLabel(),
+            )
             linkPhaseInternal.value = LinkPhase.Failed(CompanionError.LinkLost)
         }
     }
 
     /** Ends the session with an explicit error; used from within a send. */
     private fun terminateSession(error: CompanionError) {
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_FAILURE,
+            attempt = currentAttemptId,
+            phase = currentPhaseLabel(),
+            detail = SessionDiagnosticTrace.diagnosticLabel(error),
+        )
         closeLink()
         linkPhaseInternal.value = LinkPhase.Failed(error)
     }
@@ -593,6 +770,19 @@ class CompanionConnectionManager(
         linkPhaseInternal.value =
             if (userDisconnect) LinkPhase.Idle else LinkPhase.Failed(error)
     }
+
+    /** Records a typed setup failure (protocol, pairing, timeouts). */
+    private fun recordFailure(error: CompanionError, attemptId: String) {
+        diagnostics.record(
+            SessionDiagnosticTrace.EVENT_FAILURE,
+            attempt = attemptId,
+            phase = currentPhaseLabel(),
+            detail = SessionDiagnosticTrace.diagnosticLabel(error),
+        )
+    }
+
+    private fun currentPhaseLabel(): String =
+        SessionDiagnosticTrace.phaseLabel(linkPhaseInternal.value)
 
     private fun closeLink() {
         link.getAndSet(null)?.let { current ->

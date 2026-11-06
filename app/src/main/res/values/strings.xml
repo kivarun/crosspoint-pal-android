@@ -109,6 +109,11 @@
     <string name="settings_about_label">App version</string>
     <string name="settings_version">%1$s</string>
     <string name="settings_danger_section">Device</string>
+    <string name="settings_diagnostics_section">Diagnostics</string>
+    <string name="settings_diagnostics_label">Export diagnostics</string>
+    <string name="settings_diagnostics_hint">BLE session trace (JSONL)</string>
+    <string name="settings_diagnostics_share_title">Export BLE session trace</string>
+    <string name="settings_diagnostics_export_failed">The diagnostic trace could not be exported.</string>
     <string name="settings_forget_device">Forget device</string>
     <string name="settings_forget_dialog_title">Forget %1$s?</string>
     <string name="settings_forget_dialog_text">This removes the device from the app and deletes the Bluetooth bond on the phone. Reset pairing on the reader too: in its companion screen, hold Down or Confirm for 1.5 seconds.</string>

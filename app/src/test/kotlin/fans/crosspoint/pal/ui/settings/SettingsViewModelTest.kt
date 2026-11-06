@@ -27,6 +27,10 @@ class SettingsViewModelTest {
 
     private val mainDispatcher = UnconfinedTestDispatcher()
 
+    private val exporter = fans.crosspoint.pal.ble.DiagnosticExporter {
+        android.net.Uri.parse("content://test/export")
+    }
+
     @Before
     fun setUp() {
         Dispatchers.setMain(mainDispatcher)
@@ -40,7 +44,7 @@ class SettingsViewModelTest {
     @Test
     fun `theme selection is persisted in the store`() = runTest {
         val themeStore = InMemoryThemeModeStore()
-        val viewModel = SettingsViewModel(themeStore, managerWithFakes())
+        val viewModel = SettingsViewModel(themeStore, managerWithFakes(), exporter)
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect { } }
 
         viewModel.onThemeModeSelected(ThemeMode.DARK)
@@ -58,6 +62,7 @@ class SettingsViewModelTest {
         val viewModel = SettingsViewModel(
             InMemoryThemeModeStore(),
             managerWithFakes(identityStore = identityStore),
+            exporter,
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect { } }
         testScheduler.runCurrent()
@@ -79,6 +84,7 @@ class SettingsViewModelTest {
         val viewModel = SettingsViewModel(
             InMemoryThemeModeStore(),
             managerWithFakes(transport = transport, identityStore = identityStore),
+            exporter,
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect { } }
         val events = mutableListOf<SettingsUiEvent>()
@@ -104,6 +110,7 @@ class SettingsViewModelTest {
         val viewModel = SettingsViewModel(
             InMemoryThemeModeStore(),
             managerWithFakes(transport = transport, identityStore = identityStore),
+            exporter,
         )
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect { } }
         val events = mutableListOf<SettingsUiEvent>()

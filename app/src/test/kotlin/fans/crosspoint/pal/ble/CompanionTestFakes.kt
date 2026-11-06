@@ -27,6 +27,9 @@ class FakeGattTransport : GattTransport {
     private val linkQueue = ArrayDeque<FakeGattLink>()
     val createdLinks = mutableListOf<FakeGattLink>()
 
+    /** When set, the next [connect] call throws instead of returning a link. */
+    var nextConnectError: Exception? = null
+
     private val bondEventsInternal = MutableSharedFlow<String>(extraBufferCapacity = 8)
     override val bondEvents: Flow<String> = bondEventsInternal
 
@@ -42,9 +45,14 @@ class FakeGattTransport : GattTransport {
         return bondResult
     }
 
-    override suspend fun connect(address: String): GattLink =
-        linkQueue.removeFirstOrNull()
+    override suspend fun connect(address: String): GattLink {
+        nextConnectError?.let { error ->
+            nextConnectError = null
+            throw error
+        }
+        return linkQueue.removeFirstOrNull()
             ?: FakeGattLink().also { createdLinks.add(it) }
+    }
 
     override fun isBonded(address: String): Boolean = bonded
 
@@ -226,12 +234,14 @@ fun TestScope.managerWithFakes(
     environment: BleEnvironment = FakeBleEnvironment(),
     identityStore: CompanionIdentityStore = InMemoryCompanionIdentityStore(),
     scanner: FakeScanner = FakeScanner(),
+    diagnostics: SessionDiagnosticTrace? = null,
 ): CompanionConnectionManager = CompanionConnectionManager(
     scope = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler)),
     transport = transport,
     environment = environment,
     identityStore = identityStore,
     scanner = scanner,
+    diagnostics = diagnostics ?: SessionDiagnosticTrace(NoopDiagnosticTraceStore, monotonicMs = { 0L }),
 )
 
 /** Drives the current connect attempt through every setup step to Ready. */

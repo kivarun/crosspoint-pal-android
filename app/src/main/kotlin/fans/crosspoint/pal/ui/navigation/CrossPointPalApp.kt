@@ -196,6 +196,7 @@ private fun PalNavHost(
                             SettingsViewModel(
                                 themeModeStore = container.themeModeStore,
                                 connectionManager = container.connectionManager,
+                                diagnosticExporter = container.diagnosticExporter,
                             )
                         }
                     }
@@ -214,11 +215,14 @@ private fun PalNavHost(
                         launchSingleTop = true
                     }
                 },
+                onExportDiagnosticsRequested = viewModel::onExportDiagnosticsRequested,
             )
             SettingsEventsEffect(
                 events = viewModel.events,
                 onForgetCompleted = onShowSnackbar,
                 onForgetNeedsSystemSettings = onShowSnackbar,
+                onExportReady = {},
+                onExportFailed = onShowSnackbar,
             )
         }
     }
