@@ -5,8 +5,8 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group android:translateX="21.0450" android:translateY="18.1850"
-        android:scaleX="0.1300" android:scaleY="0.1300">
+    <group android:translateX="22.8195" android:translateY="20.1135"
+        android:scaleX="0.1230" android:scaleY="0.1230">
         <path android:fillColor="#FFFFFFFF" android:pathData="M60,118     A50,50 0 0 1 110,68     H339     L447,183     V433     A50,50 0 0 1 397,483     H186     V214     H261     A66,66 0 0 1 261,346     H249     V420     H372     A12,12 0 0 0 384,408     V203     H337     A53,53 0 0 1 284,150     V120     H135     A12,12 0 0 0 123,132     V483     H110     A50,50 0 0 1 60,433     Z" />
     </group>
 </vector>
